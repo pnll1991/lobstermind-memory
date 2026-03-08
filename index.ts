@@ -323,40 +323,206 @@ const lobsterMindPlugin = {
     try {
       api.registerCli(
         ({ program }: any) => {
-          program
+          const memories = program
             .command('memories')
-            .description('Manage long-term memories (LobsterMind Memory)')
-            .option('--list', 'List recent memories')
-            .option('--add <content>', 'Add a memory manually')
-            .option('--search <query>', 'Search memories by query')
-            .action(async (options: any) => {
-              if (options.list) {
-                const memories = db.prepare('SELECT * FROM memories ORDER BY created_at DESC LIMIT 20').all() as MemoryRecord[];
-                if (memories.length === 0) {
-                  console.log('No memories stored');
-                  return;
-                }
-                console.log(`Recent memories (${memories.length}):\n`);
-                memories.forEach((m, i) => console.log(`${i + 1}. [${m.type}] ${m.content}`));
-              } else if (options.add) {
-                const id = await captureMemory(options.add, 'MANUAL', 0.9, false);
-                console.log(`Memory saved with ID: ${id}`);
-              } else if (options.search) {
-                const memories = await recallMemories(options.search, 10, 0.3);
-                if (memories.length === 0) {
-                  console.log('No memories found');
-                  return;
-                }
-                console.log(`Found ${memories.length} memories:\n`);
-                memories.forEach((m, i) => console.log(`${i + 1}. [${m.type}] ${m.content} (score: ${m.score.toFixed(2)})`));
-              } else {
-                console.log('Usage: openclaw memories --list|--add <content>|--search <query>');
+            .description('Manage long-term memories (LobsterMind Memory)');
+
+          // Subcommand: list
+          memories
+            .command('list')
+            .description('List recent memories')
+            .option('--limit <n>', 'Maximum number of memories to show', '20')
+            .action((options: any) => {
+              const limit = parseInt(options.limit) || 20;
+              const memories = db.prepare('SELECT * FROM memories ORDER BY created_at DESC LIMIT ?').all(limit) as MemoryRecord[];
+              if (memories.length === 0) {
+                console.log('No memories stored');
+                return;
               }
+              console.log(`Recent memories (${memories.length}):\n`);
+              memories.forEach((m, i) => {
+                const date = new Date(m.created_at).toLocaleDateString();
+                console.log(`${i + 1}. [${m.type}] ${m.content}`);
+                console.log(`   ID: ${m.id} | Created: ${date} | Confidence: ${m.confidence.toFixed(2)}`);
+              });
+            });
+
+          // Subcommand: add
+          memories
+            .command('add <content>')
+            .description('Add a memory manually')
+            .action((content: string) => {
+              captureMemory(content, 'MANUAL', 0.9, false).then((id: string) => {
+                console.log(`✓ Memory saved with ID: ${id}`);
+              }).catch((err: any) => {
+                console.error('✗ Error saving memory:', err.message);
+              });
+            });
+
+          // Subcommand: delete
+          memories
+            .command('delete <id>')
+            .description('Delete a memory by ID')
+            .option('--force', 'Skip confirmation prompt')
+            .action((id: string, options: any) => {
+              const memory = db.prepare('SELECT * FROM memories WHERE id = ?').get(id);
+              if (!memory) {
+                console.error('✗ Memory not found:', id);
+                return;
+              }
+              
+              if (!options.force) {
+                console.log(`Memory to delete: [${(memory as any).type}] ${(memory as any).content}`);
+                const readline = require('readline').createInterface({
+                  input: process.stdin,
+                  output: process.stdout
+                });
+                readline.question('Are you sure? (y/N): ', (answer: string) => {
+                  readline.close();
+                  if (answer.toLowerCase() === 'y') {
+                    db.prepare('DELETE FROM memories WHERE id = ?').run(id);
+                    console.log('✓ Memory deleted');
+                  } else {
+                    console.log('Delete cancelled');
+                  }
+                });
+                return;
+              }
+              
+              db.prepare('DELETE FROM memories WHERE id = ?').run(id);
+              console.log('✓ Memory deleted');
+            });
+
+          // Subcommand: edit
+          memories
+            .command('edit <id> <newContent>')
+            .description('Edit a memory\'s content')
+            .action((id: string, newContent: string) => {
+              const memory = db.prepare('SELECT * FROM memories WHERE id = ?').get(id);
+              if (!memory) {
+                console.error('✗ Memory not found:', id);
+                return;
+              }
+              
+              const now = new Date().toISOString();
+              db.prepare('UPDATE memories SET content = ?, updated_at = ? WHERE id = ?').run(newContent, now, id);
+              console.log('✓ Memory updated');
+              console.log(`New content: ${newContent}`);
+            });
+
+          // Subcommand: search
+          memories
+            .command('search <query>')
+            .description('Search memories by query')
+            .option('--limit <n>', 'Maximum results', '10')
+            .option('--min-score <n>', 'Minimum similarity score', '0.3')
+            .action(async (query: string, options: any) => {
+              const limit = parseInt(options.limit) || 10;
+              const minScore = parseFloat(options.minScore) || 0.3;
+              const results = await recallMemories(query, limit, minScore);
+              if (results.length === 0) {
+                console.log('No memories found');
+                return;
+              }
+              console.log(`Found ${results.length} memories:\n`);
+              results.forEach((m, i) => {
+                console.log(`${i + 1}. [${m.type}] ${m.content}`);
+                console.log(`   Score: ${m.score.toFixed(2)} | ID: ${m.id}`);
+              });
+            });
+
+          // Subcommand: export
+          memories
+            .command('export [file]')
+            .description('Export memories to JSON file')
+            .action((file: string) => {
+              const outputPath = file || `lobstermind-export-${new Date().toISOString().split('T')[0]}.json`;
+              const memories = db.prepare('SELECT * FROM memories ORDER BY created_at DESC').all();
+              
+              const { writeFileSync } = require('fs');
+              const { join } = require('path');
+              const fullPath = join(process.cwd(), outputPath);
+              
+              writeFileSync(fullPath, JSON.stringify(memories, null, 2));
+              console.log(`✓ Exported ${memories.length} memories to ${fullPath}`);
+            });
+
+          // Subcommand: import
+          memories
+            .command('import <file>')
+            .description('Import memories from JSON file')
+            .option('--skip-dupes', 'Skip duplicate memories')
+            .action(async (file: string, options: any) => {
+              const { readFileSync } = require('fs');
+              const { join } = require('path');
+              const fullPath = join(process.cwd(), file);
+              
+              try {
+                const data = JSON.parse(readFileSync(fullPath, 'utf-8'));
+                const importData = Array.isArray(data) ? data : [data];
+                
+                let imported = 0;
+                let skipped = 0;
+                let errors = 0;
+                
+                for (const memory of importData) {
+                  try {
+                    if (options.skipDupes) {
+                      const exists = db.prepare('SELECT id FROM memories WHERE id = ?').get(memory.id);
+                      if (exists) {
+                        skipped++;
+                        continue;
+                      }
+                    }
+                    
+                    db.prepare(`
+                      INSERT OR REPLACE INTO memories (id, content, type, confidence, embedding, created_at, updated_at)
+                      VALUES (?, ?, ?, ?, ?, ?, ?)
+                    `).run(
+                      memory.id,
+                      memory.content,
+                      memory.type || 'IMPORTED',
+                      memory.confidence || 0.7,
+                      memory.embedding || '[]',
+                      memory.created_at || new Date().toISOString(),
+                      memory.updated_at || new Date().toISOString()
+                    );
+                    imported++;
+                  } catch (err: any) {
+                    console.error('✗ Error importing memory:', memory.id, err.message);
+                    errors++;
+                  }
+                }
+                
+                console.log(`✓ Import complete: ${imported} imported, ${skipped} skipped, ${errors} errors`);
+              } catch (err: any) {
+                console.error('✗ Error reading file:', err.message);
+              }
+            });
+
+          // Subcommand: stats
+          memories
+            .command('stats')
+            .description('Show memory statistics')
+            .action(() => {
+              const total = db.prepare('SELECT COUNT(*) as count FROM memories').get() as any;
+              const byType = db.prepare('SELECT type, COUNT(*) as count FROM memories GROUP BY type').all();
+              const oldest = db.prepare('SELECT MIN(created_at) as date FROM memories').get() as any;
+              const newest = db.prepare('SELECT MAX(created_at) as date FROM memories').get() as any;
+              
+              console.log('📊 Memory Statistics\n');
+              console.log(`Total memories: ${total.count}`);
+              console.log(`Oldest: ${oldest.date || 'N/A'}`);
+              console.log(`Newest: ${newest.date || 'N/A'}\n`);
+              console.log('By type:');
+              (byType as any[]).forEach(row => {
+                console.log(`  ${row.type}: ${row.count}`);
+              });
             });
         },
         { commands: ['memories'] }
       );
-      console.log('[lobstermind] Memories CLI registered with options: --list, --add, --search');
+      console.log('[lobstermind] Memories CLI registered with subcommands: list, add, delete, edit, search, export, import, stats');
     } catch (err: any) {
       console.error('[lobstermind] CLI registration error:', err.message);
     }
