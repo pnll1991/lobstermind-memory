@@ -218,44 +218,46 @@ const paoloMemoryPlugin = {
       const prompt = event?.prompt;
       console.log('[paolo-memory] Event.prompt:', prompt ? prompt.substring(0, 100) : 'not available');
       
-      // Find the last user message with enough length (skip short commands/reactions/bootstrap)
+      // Find the last message with enough length (any role, since user messages might not be in array yet)
       let query = '';
-      const skipPhrases = ['session bootstrap', 'system:', 'assistant:', 'tool:'];
+      const skipPhrases = ['session bootstrap', 'system:', 'tool:'];
       const minLength = 5;
       
-      console.log('[paolo-memory] Scanning all messages for user query...');
+      console.log('[paolo-memory] Scanning all messages for query...');
       
-      // Search backwards through ALL messages
-      let userMessagesFound = 0;
-      for (let i = messages.length - 1; i >= 0; i--) {
+      // Search backwards through ALL messages (any role)
+      let messagesScanned = 0;
+      for (let i = messages.length - 1; i >= 0 && messagesScanned < 10; i--) {
         const msg = messages[i];
+        messagesScanned++;
         
-        if (msg?.role === 'user' && msg?.content) {
-          userMessagesFound++;
-          // Log first 3 user messages we find
-          if (userMessagesFound <= 3) {
-            console.log(`[paolo-memory] User message[${i}]: length=${msg.content.length}, preview=${msg.content.substring(0, 50)}`);
-          }
+        const content = msg?.content || msg?.text || '';
+        if (!content) continue;
+        
+        const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+        
+        // Log first 5 messages we scan
+        if (messagesScanned <= 5) {
+          console.log(`[paolo-memory] Message[${i}]: role=${msg?.role || 'unknown'}, type=${typeof content}, length=${contentStr.length}`);
+          console.log(`[paolo-memory] Preview: ${contentStr.substring(0, 60)}`);
+        }
+        
+        if (contentStr.length >= minLength) {
+          const lowerContent = contentStr.toLowerCase();
+          const isSystemMessage = skipPhrases.some(phrase => lowerContent.includes(phrase));
           
-          if (msg.content.length >= minLength) {
-            const lowerContent = msg.content.toLowerCase();
-            const isSystemMessage = skipPhrases.some(phrase => lowerContent.includes(phrase));
-            
-            if (!isSystemMessage) {
-              query = msg.content;
-              console.log('[paolo-memory] ✓ FOUND suitable user message at index', i, 'with length', query.length);
-              console.log('[paolo-memory] Query:', query.substring(0, 80));
-              break;
-            } else {
-              console.log('[paolo-memory] ✗ Skipping system/bootstrap at index', i);
-            }
+          if (!isSystemMessage) {
+            query = contentStr;
+            console.log('[paolo-memory] ✓ FOUND suitable message at index', i, 'with length', query.length);
+            console.log('[paolo-memory] Query:', query.substring(0, 80));
+            break;
           } else {
-            console.log('[paolo-memory] ✗ Message too short at index', i, 'length:', msg.content.length);
+            console.log('[paolo-memory] ✗ Skipping system/bootstrap at index', i);
           }
         }
       }
       
-      console.log('[paolo-memory] Total user messages found:', userMessagesFound);
+      console.log('[paolo-memory] Total messages scanned:', messagesScanned);
       
       if (!query) {
         console.log('[paolo-memory] ⚠ No suitable user message found - using prompt instead');
