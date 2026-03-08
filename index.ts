@@ -215,16 +215,23 @@ const paoloMemoryPlugin = {
     const messages = event?.messages || ctx?.messages || [];
     console.log('[paolo-memory] Messages count:', messages.length);
     
-    const lastMessage = messages[messages.length - 1];
-    const query = lastMessage?.content;
+    // Find the last user message with enough length (skip short commands/reactions)
+    let query = '';
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === 'user' && msg.content && msg.content.length >= 10) {
+        query = msg.content;
+        console.log('[paolo-memory] Found user message at index', i, 'with length', query.length);
+        break;
+      }
+    }
     
-    console.log('[paolo-memory] Last message role:', lastMessage?.role);
-    console.log('[paolo-memory] Query length:', query?.length);
-    
-    if (!query || query.length < 10) {
-      console.log('[paolo-memory] Skipping recall - query too short');
+    if (!query) {
+      console.log('[paolo-memory] Skipping recall - no suitable user message found');
       return;
     }
+    
+    console.log('[paolo-memory] Query:', query.substring(0, 50));
     
     try {
       const memories = await recallMemories(query);
