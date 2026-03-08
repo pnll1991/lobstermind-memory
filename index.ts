@@ -33,7 +33,7 @@ interface MemoryRecord {
 const lobsterMindPlugin = {
   id: 'lobstermind-memory',
   name: 'LobsterMind Memory',
-  description: 'SQLite + DashScope embeddings long-term memory',
+  description: 'SQLite + local embeddings long-term memory',
   kind: 'memory',
   configSchema: {
     type: 'object',
@@ -42,6 +42,21 @@ const lobsterMindPlugin = {
       enabled: {
         type: 'boolean',
         default: true
+      },
+      expiration: {
+        type: 'object',
+        properties: {
+          enabled: { type: 'boolean', default: false },
+          days: { type: 'number', default: 90 },
+          action: { type: 'string', enum: ['archive', 'delete'], default: 'archive' }
+        }
+      },
+      backup: {
+        type: 'object',
+        properties: {
+          autoBackup: { type: 'boolean', default: true },
+          interval: { type: 'number', default: 24 } // hours
+        }
       }
     }
   },
@@ -94,6 +109,17 @@ const lobsterMindPlugin = {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS archived_memories (
+      id TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      type TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      tags TEXT,
+      embedding TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      archived_at TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
     CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at);
     CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories(tags);
@@ -102,6 +128,66 @@ const lobsterMindPlugin = {
   
   // Native markdown integration - MEMORY.md file
   const memoryMdPath = join(workspaceRoot, 'MEMORY.md');
+  
+  // Auto-cleanup on initialization (Memory Expiration feature)
+  const pluginConfig = api.pluginConfig || {};
+  const expirationConfig = pluginConfig.expiration || { enabled: false, days: 90, action: 'archive' };
+  
+  if (expirationConfig.enabled) {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - expirationConfig.days);
+    const cutoffStr = cutoffDate.toISOString();
+    
+    const oldMemories = db.prepare('SELECT id, content, created_at FROM memories WHERE created_at < ?').all(cutoffStr) as any[];
+    
+    if (oldMemories.length > 0) {
+      console.log(`[lobstermind] Expiration: Found ${oldMemories.length} memories older than ${expirationConfig.days} days`);
+      
+      if (expirationConfig.action === 'archive') {
+        // Move to archive table
+        const archiveStmt = db.prepare('INSERT OR REPLACE INTO archived_memories SELECT *, ? as archived_at FROM memories WHERE id = ?');
+        const deleteStmt = db.prepare('DELETE FROM memories WHERE id = ?');
+        
+        oldMemories.forEach(m => {
+          archiveStmt.run(new Date().toISOString(), m.id);
+          deleteStmt.run(m.id);
+        });
+        
+        console.log(`[lobstermind] Expiration: Archived ${oldMemories.length} memories`);
+      } else {
+        // Delete
+        const deleteStmt = db.prepare('DELETE FROM memories WHERE created_at < ?');
+        deleteStmt.run(cutoffStr);
+        console.log(`[lobstermind] Expiration: Deleted ${oldMemories.length} memories`);
+      }
+    }
+  }
+  
+  // Auto-backup on initialization
+  const backupConfig = pluginConfig.backup || { autoBackup: true, interval: 24 };
+  
+  if (backupConfig.autoBackup) {
+    const backupDir = join(workspaceRoot, 'memory', 'backups');
+    if (!existsSync(backupDir)) {
+      mkdirSync(backupDir, { recursive: true });
+    }
+    
+    // Check if backup needed based on interval
+    const latestBackup = db.prepare("SELECT created_at FROM memories ORDER BY created_at DESC LIMIT 1").get() as any;
+    if (latestBackup) {
+      const lastBackupTime = new Date(latestBackup.created_at).getTime();
+      const now = Date.now();
+      const hoursSinceBackup = (now - lastBackupTime) / (1000 * 60 * 60);
+      
+      if (hoursSinceBackup >= backupConfig.interval) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupPath = join(backupDir, `auto-backup-${timestamp}.json`);
+        const memories = db.prepare('SELECT * FROM memories ORDER BY created_at DESC').all();
+        writeFileSync(backupPath, JSON.stringify(memories, null, 2));
+        console.log(`[lobstermind] Auto-backup: Created ${backupPath} (${memories.length} memories)`);
+      }
+    }
+  }
   
   // Local embeddings using simple hash-based method (no API required!)
   // This enables semantic-like search without external dependencies
@@ -435,14 +521,26 @@ const lobsterMindPlugin = {
             .description('List recent memories')
             .option('--limit <n>', 'Maximum number of memories to show', '20')
             .option('--tag <tag>', 'Filter by tag')
+            .option('--from <date>', 'Show memories from this date (YYYY-MM-DD)')
+            .option('--to <date>', 'Show memories until this date (YYYY-MM-DD)')
             .action((options: any) => {
               const limit = parseInt(options.limit) || 20;
-              let query = 'SELECT * FROM memories';
+              let query = 'SELECT * FROM memories WHERE 1=1';
               let params: any[] = [];
               
               if (options.tag) {
-                query += ' WHERE tags LIKE ?';
+                query += ' AND tags LIKE ?';
                 params.push(`%${options.tag}%`);
+              }
+              
+              if (options.from) {
+                query += ' AND created_at >= ?';
+                params.push(`${options.from}T00:00:00.000Z`);
+              }
+              
+              if (options.to) {
+                query += ' AND created_at <= ?';
+                params.push(`${options.to}T23:59:59.999Z`);
               }
               
               query += ' ORDER BY created_at DESC LIMIT ?';
@@ -531,13 +629,36 @@ const lobsterMindPlugin = {
           // Subcommand: search
           memories
             .command('search <query>')
-            .description('Search memories by query')
+            .description('Search memories by query (supports fuzzy search)')
             .option('--limit <n>', 'Maximum results', '10')
             .option('--min-score <n>', 'Minimum similarity score', '0.3')
+            .option('--fuzzy', 'Enable fuzzy matching for typos')
             .action(async (query: string, options: any) => {
               const limit = parseInt(options.limit) || 10;
               const minScore = parseFloat(options.minScore) || 0.3;
-              const results = await recallMemories(query, limit, minScore);
+              
+              let results: any[] = [];
+              
+              if (options.fuzzy) {
+                // Fuzzy search: search for variations and substrings
+                const variations = generateQueryVariations(query);
+                for (const variation of variations) {
+                  const memories = await recallMemories(variation, limit, minScore * 0.9);
+                  results = results.concat(memories);
+                }
+                // Deduplicate by ID
+                const seen = new Set();
+                results = results.filter(m => {
+                  if (seen.has(m.id)) return false;
+                  seen.add(m.id);
+                  return true;
+                });
+                // Re-sort by score
+                results.sort((a, b) => b.score - a.score);
+              } else {
+                results = await recallMemories(query, limit, minScore);
+              }
+              
               if (results.length === 0) {
                 console.log('No memories found');
                 return;
@@ -548,21 +669,58 @@ const lobsterMindPlugin = {
                 console.log(`   Score: ${m.score.toFixed(2)} | ID: ${m.id}`);
               });
             });
+          
+          // Generate query variations for fuzzy search
+          function generateQueryVariations(query: string): string[] {
+            const variations = [query];
+            
+            // Lowercase
+            variations.push(query.toLowerCase());
+            
+            // Remove common suffixes
+            if (query.endsWith('s')) variations.push(query.slice(0, -1));
+            if (query.endsWith('ing')) variations.push(query.slice(0, -3));
+            if (query.endsWith('ed')) variations.push(query.slice(0, -2));
+            
+            // Common typos/swaps
+            if (query.includes('type')) variations.push(query.replace('type', 'tip'));
+            if (query.includes('script')) variations.push(query.replace('script', 'skript'));
+            
+            // Substrings (for partial matches)
+            const words = query.split(' ');
+            if (words.length > 1) {
+              words.forEach(word => variations.push(word));
+            }
+            
+            return [...new Set(variations)]; // Remove duplicates
+          }
 
           // Subcommand: export
           memories
             .command('export [file]')
             .description('Export memories to JSON file')
-            .action((file: string) => {
-              const outputPath = file || `lobstermind-export-${new Date().toISOString().split('T')[0]}.json`;
-              const memories = db.prepare('SELECT * FROM memories ORDER BY created_at DESC').all();
-              
-              const { writeFileSync } = require('fs');
+            .option('--backup', 'Create backup with timestamp in backup folder')
+            .action((file: string, options: any) => {
+              const { writeFileSync, mkdirSync } = require('fs');
               const { join } = require('path');
-              const fullPath = join(process.cwd(), outputPath);
               
-              writeFileSync(fullPath, JSON.stringify(memories, null, 2));
-              console.log(`✓ Exported ${memories.length} memories to ${fullPath}`);
+              let outputPath: string;
+              if (options.backup) {
+                // Auto backup to backup folder
+                const backupDir = join(workspaceRoot, 'memory', 'backups');
+                if (!existsSync(backupDir)) {
+                  mkdirSync(backupDir, { recursive: true });
+                }
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                outputPath = join(backupDir, `backup-${timestamp}.json`);
+              } else {
+                outputPath = file || `lobstermind-export-${new Date().toISOString().split('T')[0]}.json`;
+                outputPath = join(process.cwd(), outputPath);
+              }
+              
+              const memories = db.prepare('SELECT * FROM memories ORDER BY created_at DESC').all();
+              writeFileSync(outputPath, JSON.stringify(memories, null, 2));
+              console.log(`✓ Exported ${memories.length} memories to ${outputPath}`);
             });
 
           // Subcommand: import
@@ -616,6 +774,130 @@ const lobsterMindPlugin = {
                 console.log(`✓ Import complete: ${imported} imported, ${skipped} skipped, ${errors} errors`);
               } catch (err: any) {
                 console.error('✗ Error reading file:', err.message);
+              }
+            });
+          
+          // Subcommand: backup
+          memories
+            .command('backup')
+            .description('Create automatic backup')
+            .action(() => {
+              const { writeFileSync, mkdirSync } = require('fs');
+              const { join } = require('path');
+              
+              const backupDir = join(workspaceRoot, 'memory', 'backups');
+              if (!existsSync(backupDir)) {
+                mkdirSync(backupDir, { recursive: true });
+              }
+              
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const backupPath = join(backupDir, `backup-${timestamp}.json`);
+              const memories = db.prepare('SELECT * FROM memories ORDER BY created_at DESC').all();
+              
+              writeFileSync(backupPath, JSON.stringify(memories, null, 2));
+              console.log(`✓ Backup created: ${backupPath}`);
+              console.log(`  Total memories: ${memories.length}`);
+              console.log(`  Location: ${backupDir}`);
+            });
+          
+          // Subcommand: cleanup (Memory Expiration manual trigger)
+          memories
+            .command('cleanup')
+            .description('Archive or delete old memories')
+            .option('--days <n>', 'Days threshold', '90')
+            .option('--action <action>', 'archive or delete', 'archive')
+            .option('--dry-run', 'Show what would be cleaned without doing it')
+            .action((options: any) => {
+              const days = parseInt(options.days) || 90;
+              const action = options.action || 'archive';
+              const cutoffDate = new Date();
+              cutoffDate.setDate(cutoffDate.getDate() - days);
+              const cutoffStr = cutoffDate.toISOString();
+              
+              const oldMemories = db.prepare('SELECT id, content, type, created_at FROM memories WHERE created_at < ?').all(cutoffStr) as any[];
+              
+              if (oldMemories.length === 0) {
+                console.log(`✓ No memories older than ${days} days found`);
+                return;
+              }
+              
+              console.log(`📅 Found ${oldMemories.length} memories older than ${days} days:\n`);
+              
+              if (options.dryRun) {
+                oldMemories.forEach((m, i) => {
+                  console.log(`${i + 1}. [${m.type}] ${m.content.substring(0, 60)}...`);
+                  console.log(`   Created: ${new Date(m.created_at).toLocaleDateString()}`);
+                });
+                console.log(`\n⚠️  Dry run - no changes made`);
+                console.log(`Run without --dry-run to ${action} these memories`);
+              } else {
+                if (action === 'archive') {
+                  const archiveStmt = db.prepare('INSERT OR REPLACE INTO archived_memories SELECT *, ? as archived_at FROM memories WHERE id = ?');
+                  const deleteStmt = db.prepare('DELETE FROM memories WHERE id = ?');
+                  
+                  oldMemories.forEach(m => {
+                    archiveStmt.run(new Date().toISOString(), m.id);
+                    deleteStmt.run(m.id);
+                  });
+                  
+                  console.log(`✓ Archived ${oldMemories.length} memories to archived_memories table`);
+                } else {
+                  const deleteStmt = db.prepare('DELETE FROM memories WHERE created_at < ?');
+                  deleteStmt.run(cutoffStr);
+                  console.log(`✓ Deleted ${oldMemories.length} memories permanently`);
+                }
+              }
+            });
+          
+          // Subcommand: restore
+          memories
+            .command('restore <file>')
+            .description('Restore memories from backup file')
+            .option('--merge', 'Merge with existing memories (default)')
+            .option('--replace', 'Delete all existing and replace with backup')
+            .action(async (file: string, options: any) => {
+              const { readFileSync } = require('fs');
+              const { join } = require('path');
+              const fullPath = join(process.cwd(), file);
+              
+              try {
+                const data = JSON.parse(readFileSync(fullPath, 'utf-8'));
+                const importData = Array.isArray(data) ? data : [data];
+                
+                if (options.replace) {
+                  db.prepare('DELETE FROM memories').run();
+                  console.log('✓ Cleared existing memories');
+                }
+                
+                let imported = 0;
+                let skipped = 0;
+                
+                for (const memory of importData) {
+                  const exists = db.prepare('SELECT id FROM memories WHERE id = ?').get(memory.id);
+                  if (exists && !options.replace) {
+                    skipped++;
+                    continue;
+                  }
+                  
+                  db.prepare(`
+                    INSERT OR REPLACE INTO memories (id, content, type, confidence, tags, embedding, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  `).run(
+                    memory.id,
+                    memory.content,
+                    memory.type || 'RESTORED',
+                    memory.confidence || 0.7,
+                    memory.tags || null,
+                    memory.embedding || '[]',
+                    memory.created_at || new Date().toISOString(),
+                    memory.updated_at || new Date().toISOString()
+                  );
+                  imported++;
+                }
+                
+                console.log(`✓ Restore complete: ${imported} imported, ${skipped} skipped`);
+              } catch (err: any) {
+                console.error('✗ Error reading backup file:', err.message);
               }
             });
 
@@ -690,7 +972,7 @@ const lobsterMindPlugin = {
         },
         { commands: ['memories'] }
       );
-      console.log('[lobstermind] Memories CLI registered with subcommands: list, add, delete, edit, search, export, import, stats, tags');
+      console.log('[lobstermind] Memories CLI registered with subcommands: list, add, delete, edit, search, export, import, stats, tags, backup, restore, cleanup');
     } catch (err: any) {
       console.error('[lobstermind] CLI registration error:', err.message);
     }
