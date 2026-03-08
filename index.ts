@@ -124,6 +124,32 @@ const lobsterMindPlugin = {
     CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at);
     CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories(tags);
   `);
+  
+  // Migration: Add tags column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`
+      ALTER TABLE memories ADD COLUMN tags TEXT;
+    `);
+    console.log('[lobstermind] Migration: Added tags column to memories table');
+  } catch (err: any) {
+    // Column already exists, that's fine
+    if (!err.message.includes('duplicate column')) {
+      console.error('[lobstermind] Migration warning:', err.message);
+    }
+  }
+  
+  try {
+    db.exec(`
+      ALTER TABLE archived_memories ADD COLUMN tags TEXT;
+    `);
+    console.log('[lobstermind] Migration: Added tags column to archived_memories table');
+  } catch (err: any) {
+    // Column already exists, that's fine
+    if (!err.message.includes('duplicate column')) {
+      console.error('[lobstermind] Migration warning:', err.message);
+    }
+  }
+  
   console.log('[lobstermind] Database initialized');
   
   // Native markdown integration - MEMORY.md file
