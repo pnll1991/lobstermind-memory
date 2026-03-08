@@ -38,54 +38,161 @@ openclaw memories --help
 
 ---
 
-## Why LobsterMind?
+## Overview
 
-### Comparison
+LobsterMind Memory is a long-term memory plugin for OpenClaw focused on simplicity and reliability. It uses SQLite for storage, hash-based embeddings for semantic search, and supports cloud backup to Google Drive, Dropbox, and OneDrive.
+
+### Design Philosophy
+
+**LobsterMind is for you if:**
+- You want something that works immediately
+- You prefer simple CLI over complex UIs
+- You don't want external dependencies (Python, Ollama)
+- You value reliability over feature completeness
+
+**Other plugins like Gigabrain are for you if:**
+- You want comprehensive feature sets
+- You need entity tracking and relationship graphs
+- You want web consoles and dashboards
+- You don't mind complex setup and configuration
+
+Both approaches are valid. Choose based on your needs.
+
+---
+
+## Features
+
+### Core
+
+- **SQLite Storage**: Local, fast, reliable database
+- **Semantic Search**: Hash-based embeddings (no API required)
+- **Natural Language Queries**: Automatic date/tag/type detection
+- **Auto-Deduplication**: 85% similarity threshold
+- **Fuzzy Search**: Tolerates typos and variations
+- **Memory Tags**: Organize and filter memories
+- **Date Range Filters**: Query by time periods
+
+### Backup
+
+- **Local Backup**: Automatic backup on startup
+- **Cloud Backup**: Google Drive, Dropbox, OneDrive via rclone
+- **Export/Import**: JSON backup files
+- **Memory Expiration**: Auto-archive or delete old memories
+
+### Integration
+
+- **Obsidian Sync**: Automatic export to `obsidian-vault/LobsterMind/Memories.md`
+- **Native Markdown**: Sync to `workspace/MEMORY.md`
+- **CLI Commands**: 15 commands for management
+
+---
+
+## Comparison: LobsterMind vs Gigabrain
+
+Both plugins solve long-term memory for OpenClaw. They take different approaches.
+
+### Architecture
+
+| Aspect | LobsterMind | Gigabrain |
+|--------|-------------|-----------|
+| Language | TypeScript/Node.js | TypeScript + Python |
+| Dependencies | better-sqlite3 | better-sqlite3 + Ollama + FastAPI |
+| Lines of Code | ~1,400 | ~2,000+ |
+| Database | SQLite | SQLite + multiple stores |
+
+### Installation
+
+| Aspect | LobsterMind | Gigabrain |
+|--------|-------------|-----------|
+| Steps | Clone, npm install, restart | Wizard, multiple configs, setup |
+| Time | ~1 minute | ~30 minutes |
+| External | None | Python, Ollama (4GB+ model) |
+
+### Configuration
+
+| Aspect | LobsterMind | Gigabrain |
+|--------|-------------|-----------|
+| Default Config | Zero (works immediately) | 50+ options |
+| Required Setup | None | Wizard, vault paths, models |
+| Optional Features | Expiration, backup interval | Many advanced options |
+
+### Features
 
 | Feature | LobsterMind | Gigabrain |
 |---------|-------------|-----------|
-| Installation | 1 command | 30+ min wizard |
-| Dependencies | Node.js only | Python + Ollama + Node.js |
-| Codebase | 1,400 lines | 2,000+ lines |
-| Configuration | Zero config | 50+ options |
-| CLI Commands | 15 simple | 20+ complex |
-| Cloud Backup | GDrive, Dropbox, OneDrive | Local only |
-| Natural Language Search | Full support | Not available |
-| Setup Time | 1 minute | 30+ minutes |
+| Semantic Search | ✅ Hash-based | ✅ Ollama embeddings |
+| Natural Language | ✅ Full parsing | ⚠️ Limited |
+| Cloud Backup | ✅ GDrive/Dropbox/OneDrive | ❌ Local only |
+| Auto-Deduplication | ✅ 85% threshold | ⚠️ Manual |
+| Fuzzy Search | ✅ Yes | ⚠️ Partial |
+| Memory Tags | ✅ Yes | ⚠️ Complex |
+| Web Console | ❌ No | ✅ Yes |
+| Entity Tracking | ❌ No | ✅ Yes |
+| Audit Pipelines | ❌ No | ✅ Yes |
+| Relationship Graph | ❌ No | ✅ Yes |
+| Review Queues | ❌ No | ✅ Yes |
 
-### Unique Features
+### Output Structure
 
-**Natural Language Queries**
-
-```powershell
-openclaw memories search "qué dije sobre typescript ayer"
-openclaw memories search "preferencias de la semana pasada"
-openclaw memories search "últimos 30 días tag:coding"
+**LobsterMind Obsidian:**
+```
+obsidian-vault/LobsterMind/
+└── Memories.md
 ```
 
-Automatically detects dates, tags, and types from natural language.
+**Gigabrain Obsidian:**
+```
+obsidian-vault/Gigabrain/
+├── 00 Home/
+├── 10 Native/
+├── 20 Nodes/
+├── 30 Views/
+├── 40 Reports/
+└── Inbox/
+```
 
-**Cloud Backup**
+### CLI Comparison
 
+**LobsterMind (15 commands):**
 ```powershell
-openclaw memories setup-cloud
+openclaw memories list
+openclaw memories add "content" --tags "coding"
+openclaw memories search "yesterday"
 openclaw memories backup --to gdrive
-openclaw memories restore backup.json --from gdrive
+openclaw memories stats
+openclaw memories cleanup --days 90
 ```
 
-Only plugin with Google Drive, Dropbox, and OneDrive support.
-
-**Auto-Deduplication**
-
-Detects and merges similar memories automatically (85% threshold). No duplicates.
-
-**Fuzzy Search**
-
+**Gigabrain (20+ commands):**
 ```powershell
-openclaw memories search "typescrip" --fuzzy
+node scripts/gigabrainctl.js nightly --config ...
+node scripts/gigabrainctl.js vault build --skip-reports
+node scripts/gigabrainctl.js audit --mode apply
 ```
 
-Tolerates typos and variations.
+---
+
+## When to Choose Each
+
+### Choose LobsterMind if:
+
+- You want **simple installation** (1 minute)
+- You prefer **zero configuration**
+- You don't want **external dependencies** (Python, Ollama)
+- You value **cloud backup** (GDrive/Dropbox/OneDrive)
+- You want **natural language search**
+- You prefer **CLI over web UI**
+- You want **automatic deduplication**
+
+### Choose Gigabrain if:
+
+- You want **comprehensive features**
+- You need **entity/person tracking**
+- You want **web console and dashboards**
+- You need **audit pipelines**
+- You want **relationship graphs**
+- You don't mind **complex setup**
+- You want **review queues**
 
 ---
 
@@ -216,28 +323,6 @@ openclaw memories restore backup.json --from gdrive
 
 ---
 
-## Design Philosophy
-
-### What LobsterMind Does
-
-- Simple installation (1 command)
-- Zero configuration
-- Cloud backup support
-- Natural language queries
-- Automatic deduplication
-- Clean CLI output
-
-### What LobsterMind Doesn't Do
-
-- Web console (use CLI or Obsidian)
-- Entity tracking (use tags)
-- Complex audit pipelines
-- Benchmarking tools
-
-These are intentional decisions. LobsterMind prioritizes simplicity and reliability over feature completeness.
-
----
-
 ## Troubleshooting
 
 ### Plugin Not Loading
@@ -281,9 +366,12 @@ MIT License
 
 ## Acknowledgments
 
-Inspired by the Gigabrain project's vision for long-term memory in OpenClaw. LobsterMind takes a different approach: minimal, practical, and working out-of-the-box.
+**Gigabrain** (https://github.com/legendaryvibecoder/gigabrain) pioneered long-term memory for OpenClaw and inspired this project. Both plugins aim to solve the same problem with different approaches.
 
-Both projects solve the same problem. Gigabrain is comprehensive and academic. LobsterMind is simple and practical.
+**LobsterMind** prioritizes simplicity, zero configuration, and cloud backup.  
+**Gigabrain** prioritizes comprehensive features, entity tracking, and advanced workflows.
+
+Both are valid choices depending on your needs.
 
 ---
 
