@@ -210,10 +210,9 @@ const paoloMemoryPlugin = {
   console.log('[paolo-memory] Registering before_prompt_build hook...');
   api.on('before_prompt_build', async (event: any, ctx: any) => {
     console.log('[paolo-memory] before_prompt_build triggered!');
-    console.log('[paolo-memory] Event:', JSON.stringify(Object.keys(event || {})));
-    console.log('[paolo-memory] Context:', JSON.stringify(Object.keys(ctx || {})));
     
-    const messages = ctx?.messages || [];
+    // Messages are in event, not ctx!
+    const messages = event?.messages || ctx?.messages || [];
     console.log('[paolo-memory] Messages count:', messages.length);
     
     const lastMessage = messages[messages.length - 1];
