@@ -207,15 +207,29 @@ const paoloMemoryPlugin = {
   }
   
   // Hook: Before prompt build - recall relevant memories
+  console.log('[paolo-memory] Registering before_prompt_build hook...');
   api.on('before_prompt_build', async (event: any, ctx: any) => {
+    console.log('[paolo-memory] before_prompt_build triggered!');
+    console.log('[paolo-memory] Event:', JSON.stringify(Object.keys(event || {})));
+    console.log('[paolo-memory] Context:', JSON.stringify(Object.keys(ctx || {})));
+    
     const messages = ctx?.messages || [];
+    console.log('[paolo-memory] Messages count:', messages.length);
+    
     const lastMessage = messages[messages.length - 1];
     const query = lastMessage?.content;
     
-    if (!query || query.length < 10) return;
+    console.log('[paolo-memory] Last message role:', lastMessage?.role);
+    console.log('[paolo-memory] Query length:', query?.length);
+    
+    if (!query || query.length < 10) {
+      console.log('[paolo-memory] Skipping recall - query too short');
+      return;
+    }
     
     try {
       const memories = await recallMemories(query);
+      console.log('[paolo-memory] Recall results:', memories.length);
       
       if (memories.length > 0) {
         const context = memories.map(m => `- ${m.content}`).join('\n');
@@ -223,9 +237,12 @@ const paoloMemoryPlugin = {
         return {
           prependSystemContext: `<paolo-memory-context>\nRelevant memories from long-term storage:\n${context}\n</paolo-memory-context>`
         };
+      } else {
+        console.log('[paolo-memory] No memories found for this query');
       }
     } catch (err: any) {
       console.error('[paolo-memory] Recall error:', err.message);
+      console.error('[paolo-memory] Stack:', err.stack);
     }
   });
   
