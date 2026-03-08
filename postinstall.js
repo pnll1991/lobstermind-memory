@@ -1,21 +1,14 @@
 #!/usr/bin/env node
 
-/**
- * Post-install script for LobsterMind Memory
- * Auto-creates directories and initial config
- */
-
-const { mkdirSync, writeFileSync, existsSync } = require('fs');
-const { join } = require('path');
+import { mkdirSync, writeFileSync, existsSync } from 'fs';
+import { join } from 'path';
 
 console.log('\n🦞 LobsterMind Memory - Post Install Setup\n');
 
-// Get OpenClaw workspace
 const workspaceRoot = process.env.OPENCLAW_WORKSPACE || join(process.env.HOME || process.env.USERPROFILE, '.openclaw', 'workspace');
 
 console.log(`Workspace: ${workspaceRoot}\n`);
 
-// Create directories
 const dirs = [
   ['Memory database', join(workspaceRoot, 'memory')],
   ['Backups', join(workspaceRoot, 'memory', 'backups')],
@@ -36,7 +29,6 @@ for (const [name, dir] of dirs) {
   }
 }
 
-// Create MEMORY.md
 const memoryMdPath = join(workspaceRoot, 'MEMORY.md');
 if (!existsSync(memoryMdPath)) {
   try {
@@ -49,7 +41,6 @@ if (!existsSync(memoryMdPath)) {
   console.log('✓ Exists: MEMORY.md');
 }
 
-// Create Obsidian Memories.md
 const obsidianMdPath = join(workspaceRoot, 'obsidian-vault', 'LobsterMind', 'Memories.md');
 if (!existsSync(obsidianMdPath)) {
   try {
