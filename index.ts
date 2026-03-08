@@ -119,21 +119,6 @@ const paoloMemoryPlugin = {
       return new Array(384).fill(0);
     }
   }
-    } catch (err: any) {
-      console.error('[paolo-memory] Embedding API error:', err.message);
-      // Fallback to hash-based embedding
-      return hashEmbedding(text);
-    }
-  }
-  
-  function hashEmbedding(text: string): number[] {
-    const hash = createHash('sha256').update(text).digest('hex');
-    const embedding = new Array(1536).fill(0);
-    for (let i = 0; i < 192; i++) {
-      embedding[i] = (parseInt(hash.substring(i * 2, i * 2 + 2), 16) / 255) * 2 - 1;
-    }
-    return embedding;
-  }
   
   function cosineSimilarity(a: number[], b: number[]): number {
     const dot = a.reduce((sum, ai, i) => sum + ai * (b[i] || 0), 0);
