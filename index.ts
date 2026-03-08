@@ -18,6 +18,18 @@ import { createHash } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 
+interface MemoryRecord {
+  id: string;
+  content: string;
+  type: string;
+  confidence: number;
+  tags?: string;
+  embedding: string;
+  created_at: string;
+  updated_at: string;
+  score?: number;
+}
+
 const lobsterMindPlugin = {
   id: 'lobstermind-memory',
   name: 'LobsterMind Memory',
@@ -77,14 +89,19 @@ const lobsterMindPlugin = {
       content TEXT NOT NULL,
       type TEXT NOT NULL,
       confidence REAL NOT NULL,
+      tags TEXT,
       embedding TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
     CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at);
+    CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories(tags);
   `);
   console.log('[lobstermind] Database initialized');
+  
+  // Native markdown integration - MEMORY.md file
+  const memoryMdPath = join(workspaceRoot, 'MEMORY.md');
   
   // Local embeddings using simple hash-based method (no API required!)
   // This enables semantic-like search without external dependencies
