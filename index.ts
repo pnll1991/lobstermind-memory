@@ -146,7 +146,7 @@ const lobsterMindPlugin = {
     return normA && normB ? dot / (normA * normB) : 0;
   }
   
-  async function captureMemory(content: string, type: string = 'USER_FACT', confidence: number = 0.7, skipSync: boolean = false): Promise<string> {
+  async function captureMemory(content: string, type: string = 'USER_FACT', confidence: number = 0.7, skipSync: boolean = false, tags?: string): Promise<string> {
     const now = new Date().toISOString();
     
     // AUTO-DEDUPLICATION: Check for similar memories before creating new one
@@ -157,12 +157,13 @@ const lobsterMindPlugin = {
       console.log('[lobstermind] Auto-dedup: Found similar memory (score:', existingMemory.score.toFixed(2), ')');
       console.log('[lobstermind] Auto-dedup: Updating instead of creating duplicate');
       
-      db.prepare('UPDATE memories SET content = ?, type = ?, confidence = ?, updated_at = ? WHERE id = ?')
-        .run(content, type, confidence, now, existingMemory.id);
+      db.prepare('UPDATE memories SET content = ?, type = ?, confidence = ?, tags = ?, updated_at = ? WHERE id = ?')
+        .run(content, type, confidence, tags || existingMemory.tags || null, now, existingMemory.id);
       
-      // Sync to Obsidian
+      // Sync to Obsidian and MEMORY.md
       if (!skipSync) {
         syncToObsidian(content, type, confidence, now);
+        syncToMemoryMd(content, type, confidence, now, tags);
       }
       
       console.log('[lobstermind] Updated memory:', content.substring(0, 50));
@@ -176,16 +177,65 @@ const lobsterMindPlugin = {
     const embedding = await getEmbedding(content);
     
     // Insert new memory
-    db.prepare('INSERT INTO memories (id, content, type, confidence, embedding, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(id, content, type, confidence, JSON.stringify(embedding), now, now);
+    db.prepare('INSERT INTO memories (id, content, type, confidence, tags, embedding, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, content, type, confidence, tags || null, JSON.stringify(embedding), now, now);
     
-    // Sync to Obsidian
+    // Sync to Obsidian and MEMORY.md
     if (!skipSync) {
       syncToObsidian(content, type, confidence, now);
+      syncToMemoryMd(content, type, confidence, now, tags);
     }
     
     console.log('[lobstermind] Captured memory:', content.substring(0, 50));
     return id;
+  }
+  
+  // Native Markdown Integration - Sync to MEMORY.md
+  function syncToMemoryMd(content: string, type: string, confidence: number, createdAt: string, tags?: string) {
+    try {
+      const date = new Date(createdAt).toISOString().split('T')[0];
+      const tagsStr = tags ? ` #[${tags.split(',').join('][')}]` : '';
+      const entry = `- [${type}] ${content}${tagsStr} (confidence: ${confidence.toFixed(2)})\n`;
+      
+      let existing = '';
+      if (existsSync(memoryMdPath)) {
+        existing = readFileSync(memoryMdPath, 'utf-8');
+      }
+      
+      const dateHeader = `## ${date}\n\n`;
+      
+      if (!existing.includes(dateHeader)) {
+        // Add new date section
+        writeFileSync(memoryMdPath, `${existing}${dateHeader}${entry}\n`, 'utf-8');
+      } else if (!existing.includes(entry.trim())) {
+        // Add to existing date section
+        const lines = existing.split('\n');
+        const newLines: string[] = [];
+        let foundDate = false;
+        let added = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+          newLines.push(lines[i]);
+          if (lines[i] === dateHeader.trim()) {
+            foundDate = true;
+          } else if (foundDate && !added && (lines[i].startsWith('- [') || lines[i] === '')) {
+            // Add before next entry or empty line
+            newLines.push(entry.trim());
+            added = true;
+          }
+        }
+        
+        if (!added && foundDate) {
+          newLines.push(entry.trim());
+        }
+        
+        writeFileSync(memoryMdPath, newLines.join('\n'), 'utf-8');
+      }
+      
+      console.log('[lobstermind] Synced to MEMORY.md:', memoryMdPath);
+    } catch (err: any) {
+      console.error('[lobstermind] MEMORY.md sync error:', err.message);
+    }
   }
   
   async function findSimilarMemories(query: string, threshold: number = 0.85): Promise<{id: string, content: string, score: number}[]> {
@@ -354,10 +404,11 @@ const lobsterMindPlugin = {
             if (!content) continue;
             const type = note.match(/type="([^"]*)"/)?.[1] || 'USER_FACT';
             const confidence = parseFloat(note.match(/confidence="([^"]*)"/)?.[1] || '0.7');
+            const tags = note.match(/tags="([^"]*)"/)?.[1]; // Extract tags
             
             if (content && content.length >= 25) {
               try {
-                await captureMemory(content, type, confidence);
+                await captureMemory(content, type, confidence, false, tags);
               } catch (err: any) {
                 console.error('[lobstermind] Capture error:', err.message);
               }
@@ -383,9 +434,21 @@ const lobsterMindPlugin = {
             .command('list')
             .description('List recent memories')
             .option('--limit <n>', 'Maximum number of memories to show', '20')
+            .option('--tag <tag>', 'Filter by tag')
             .action((options: any) => {
               const limit = parseInt(options.limit) || 20;
-              const memories = db.prepare('SELECT * FROM memories ORDER BY created_at DESC LIMIT ?').all(limit) as MemoryRecord[];
+              let query = 'SELECT * FROM memories';
+              let params: any[] = [];
+              
+              if (options.tag) {
+                query += ' WHERE tags LIKE ?';
+                params.push(`%${options.tag}%`);
+              }
+              
+              query += ' ORDER BY created_at DESC LIMIT ?';
+              params.push(limit);
+              
+              const memories = db.prepare(query).all(...params) as MemoryRecord[];
               if (memories.length === 0) {
                 console.log('No memories stored');
                 return;
@@ -393,8 +456,9 @@ const lobsterMindPlugin = {
               console.log(`Recent memories (${memories.length}):\n`);
               memories.forEach((m, i) => {
                 const date = new Date(m.created_at).toLocaleDateString();
+                const tagsStr = m.tags ? ` | Tags: [${m.tags}]` : '';
                 console.log(`${i + 1}. [${m.type}] ${m.content}`);
-                console.log(`   ID: ${m.id} | Created: ${date} | Confidence: ${m.confidence.toFixed(2)}`);
+                console.log(`   ID: ${m.id} | Created: ${date} | Confidence: ${m.confidence.toFixed(2)}${tagsStr}`);
               });
             });
 
@@ -402,9 +466,12 @@ const lobsterMindPlugin = {
           memories
             .command('add <content>')
             .description('Add a memory manually')
-            .action((content: string) => {
-              captureMemory(content, 'MANUAL', 0.9, false).then((id: string) => {
+            .option('--tags <tags>', 'Comma-separated tags')
+            .action((content: string, options: any) => {
+              const tags = options.tags || undefined;
+              captureMemory(content, 'MANUAL', 0.9, false, tags).then((id: string) => {
                 console.log(`✓ Memory saved with ID: ${id}`);
+                if (tags) console.log(`  Tags: [${tags}]`);
               }).catch((err: any) => {
                 console.error('✗ Error saving memory:', err.message);
               });
@@ -527,13 +594,14 @@ const lobsterMindPlugin = {
                     }
                     
                     db.prepare(`
-                      INSERT OR REPLACE INTO memories (id, content, type, confidence, embedding, created_at, updated_at)
-                      VALUES (?, ?, ?, ?, ?, ?, ?)
+                      INSERT OR REPLACE INTO memories (id, content, type, confidence, tags, embedding, created_at, updated_at)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     `).run(
                       memory.id,
                       memory.content,
                       memory.type || 'IMPORTED',
                       memory.confidence || 0.7,
+                      memory.tags || null,
                       memory.embedding || '[]',
                       memory.created_at || new Date().toISOString(),
                       memory.updated_at || new Date().toISOString()
@@ -558,8 +626,20 @@ const lobsterMindPlugin = {
             .action(() => {
               const total = db.prepare('SELECT COUNT(*) as count FROM memories').get() as any;
               const byType = db.prepare('SELECT type, COUNT(*) as count FROM memories GROUP BY type').all();
+              const byTags = db.prepare('SELECT tags FROM memories WHERE tags IS NOT NULL AND tags != ""').all();
               const oldest = db.prepare('SELECT MIN(created_at) as date FROM memories').get() as any;
               const newest = db.prepare('SELECT MAX(created_at) as date FROM memories').get() as any;
+              
+              // Extract unique tags
+              const tagCounts: {[key: string]: number} = {};
+              byTags.forEach((row: any) => {
+                if (row.tags) {
+                  row.tags.split(',').forEach((tag: string) => {
+                    const t = tag.trim();
+                    if (t) tagCounts[t] = (tagCounts[t] || 0) + 1;
+                  });
+                }
+              });
               
               console.log('📊 Memory Statistics\n');
               console.log(`Total memories: ${total.count}`);
@@ -569,11 +649,48 @@ const lobsterMindPlugin = {
               (byType as any[]).forEach(row => {
                 console.log(`  ${row.type}: ${row.count}`);
               });
+              
+              if (Object.keys(tagCounts).length > 0) {
+                console.log('\nBy tag:');
+                Object.entries(tagCounts).forEach(([tag, count]) => {
+                  console.log(`  ${tag}: ${count}`);
+                });
+              }
+            });
+          
+          // Subcommand: tags
+          memories
+            .command('tags')
+            .description('List all tags')
+            .action(() => {
+              const withTags = db.prepare('SELECT tags FROM memories WHERE tags IS NOT NULL AND tags != ""').all();
+              const tagCounts: {[key: string]: number} = {};
+              
+              withTags.forEach((row: any) => {
+                if (row.tags) {
+                  row.tags.split(',').forEach((tag: string) => {
+                    const t = tag.trim();
+                    if (t) tagCounts[t] = (tagCounts[t] || 0) + 1;
+                  });
+                }
+              });
+              
+              if (Object.keys(tagCounts).length === 0) {
+                console.log('No tags found');
+                return;
+              }
+              
+              console.log('🏷️  Memory Tags\n');
+              Object.entries(tagCounts)
+                .sort(([, a], [, b]) => (b as number) - (a as number))
+                .forEach(([tag, count]) => {
+                  console.log(`  ${tag}: ${count} memories`);
+                });
             });
         },
         { commands: ['memories'] }
       );
-      console.log('[lobstermind] Memories CLI registered with subcommands: list, add, delete, edit, search, export, import, stats');
+      console.log('[lobstermind] Memories CLI registered with subcommands: list, add, delete, edit, search, export, import, stats, tags');
     } catch (err: any) {
       console.error('[lobstermind] CLI registration error:', err.message);
     }
