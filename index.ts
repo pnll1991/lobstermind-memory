@@ -215,14 +215,25 @@ const paoloMemoryPlugin = {
     const messages = event?.messages || ctx?.messages || [];
     console.log('[paolo-memory] Messages count:', messages.length);
     
-    // Find the last user message with enough length (skip short commands/reactions)
+    // Find the last user message with enough length (skip short commands/reactions/bootstrap)
     let query = '';
+    const skipPhrases = ['session bootstrap', 'system:', 'assistant:', 'tool:'];
+    
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
       if (msg.role === 'user' && msg.content && msg.content.length >= 10) {
-        query = msg.content;
-        console.log('[paolo-memory] Found user message at index', i, 'with length', query.length);
-        break;
+        // Skip bootstrap/system messages
+        const lowerContent = msg.content.toLowerCase();
+        const isSystemMessage = skipPhrases.some(phrase => lowerContent.includes(phrase));
+        
+        if (!isSystemMessage) {
+          query = msg.content;
+          console.log('[paolo-memory] Found user message at index', i, 'with length', query.length);
+          console.log('[paolo-memory] Query preview:', query.substring(0, 60));
+          break;
+        } else {
+          console.log('[paolo-memory] Skipping system/bootstrap message at index', i);
+        }
       }
     }
     
@@ -230,8 +241,6 @@ const paoloMemoryPlugin = {
       console.log('[paolo-memory] Skipping recall - no suitable user message found');
       return;
     }
-    
-    console.log('[paolo-memory] Query:', query.substring(0, 50));
     
     try {
       const memories = await recallMemories(query);
@@ -248,7 +257,6 @@ const paoloMemoryPlugin = {
       }
     } catch (err: any) {
       console.error('[paolo-memory] Recall error:', err.message);
-      console.error('[paolo-memory] Stack:', err.stack);
     }
   });
   
