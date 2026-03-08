@@ -215,10 +215,19 @@ const paoloMemoryPlugin = {
     // Find the last user message with enough length (skip short commands/reactions/bootstrap)
     let query = '';
     const skipPhrases = ['session bootstrap', 'system:', 'assistant:', 'tool:'];
+    const minLength = 5; // Reduced from 10 to catch shorter questions
+    
+    console.log('[paolo-memory] Scanning messages for recall...');
     
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (msg.role === 'user' && msg.content && msg.content.length >= 10) {
+      
+      // Debug: show last 5 messages
+      if (i >= messages.length - 5) {
+        console.log(`[paolo-memory] Message[${i}]: role=${msg?.role}, length=${msg?.content?.length || 0}`);
+      }
+      
+      if (msg?.role === 'user' && msg?.content && msg.content.length >= minLength) {
         // Skip bootstrap/system messages
         const lowerContent = msg.content.toLowerCase();
         const isSystemMessage = skipPhrases.some(phrase => lowerContent.includes(phrase));
@@ -235,7 +244,8 @@ const paoloMemoryPlugin = {
     }
     
     if (!query) {
-      console.log('[paolo-memory] Skipping recall - no suitable user message found');
+      console.log('[paolo-memory] Skipping recall - no suitable user message found (all messages too short or system messages)');
+      console.log('[paolo-memory] Tip: Try asking a question with at least', minLength, 'characters');
       return;
     }
     
