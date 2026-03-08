@@ -183,8 +183,8 @@ const lobsterMindPlugin = {
   
   console.log('[lobstermind] Database initialized');
   
-  // Native markdown integration - MEMORY.md file
-  const memoryMdPath = join(workspaceRoot, 'MEMORY.md');
+  // Native markdown integration - MEMORY.md file (already created in setup)
+  // memoryMdPath is already declared above
   
   // Auto-cleanup on initialization (Memory Expiration feature)
   const pluginConfig = api.pluginConfig || {};
