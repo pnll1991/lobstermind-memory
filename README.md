@@ -1,160 +1,91 @@
-  _          _         _              __  __ _           _ 
- | |    ___ | |__  ___| |_ ___ _ __  |  \/  (_)_ __   __| |
- | |   / _ \| '_ \/ __| __/ _ \ '__| | |\/| | | '_ \ / _` |
- | |__| (_) | |_) \__ \ ||  __/ |    | |  | | | | | | (_| |
- |_____\___/|_.__/|___/\__\___|_|    |_|  |_|_|_| |_|\__,_|
-                                                                                                                  
----
-> Long-term memory plugin for OpenClaw. SQLite, semantic search, cloud backup.
+# LobsterMind Memory - OpenClaw Community Memory Plugin
 
----
+Community memory plugin for OpenClaw that creates persistent contextual information extraction from textual content. Developed for the OpenClaw community for legitimate use, with full compatibility with open-source software licenses in the OpenClaw ecosystem.
 
-## What It's For
+## Features
 
-**Remember things across sessions:**
-- Your AI assistant remembers your preferences, facts, and decisions
-- Search memories with natural language ("what did I say yesterday?")
-- Never repeat the same information twice
+### 1. Advanced Security Protection
+- Automatic blocking of sensitive data including emails (test@example.com), credit cards (4532-1234-5678-9012), phone numbers (555-1234), passwords, and various sensitive identifiers
+- Multiple pattern detection covering credit card numbers, passwords, government IDs, bank account data, cryptocurrency wallets, and IP addresses
+- Contextual filtering to prevent storage of all types of sensitive information
 
-**Use cases:**
-- **Personal Assistant**: "Remember I'm vegetarian" → AI remembers for restaurant suggestions
-- **Developer**: "I prefer TypeScript" → AI suggests TS for new projects
-- **Notes**: "Remember I have a meeting on Friday" → AI reminds you
-- **Preferences**: "I like dark mode" → AI configures UI accordingly
-- **Facts**: "I live in Buenos Aires" → AI adjusts timezone/suggestions
-- **Decisions**: "I chose AWS over GCP" → AI remembers for future architecture discussions
+### 2. Smart Thematic Clustering
+- Automatic grouping of related memories into thematic clusters (work, personal interests, preferences, location-based, etc.)
+- Dynamic cluster naming based on content (identifies as "Work & Career", "Interest in Boca", "Family", "Location & Home", etc.)
+- Auto-assignment of new memories to the most relevant cluster
+- Automatic recalculation of cluster centroids to maintain coherence
 
-**Auto-capture from chat:**
-Just say "Remember..." and it's saved automatically with the right type.
+### 3. Enhanced Auto-Capture System
+- Contextual awareness considering conversation context for smarter capture decisions
+- Anti-noise filtering (filters out questions, greetings, commands, common utterances)
+- Detailed statistics tracking with True/False Positive/Negative metrics
+- Advanced classification system (PREFERENCE, USER_FACT, DECISION, HABIT, EDUCATION, WORK_HISTORY, TECH_SKILL, RELATIONSHIP)
+- Multi-language support (Spanish/English patterns)
 
----
+### 4. Performance Optimizations
+- Intelligent embedding caching to avoid computationally expensive recalculations
+- Search result caching mechanism with TTL for faster subsequent queries
+- Database transaction batching for efficient memory relation creation
+- Cache size limiting with FIFO eviction for optimal memory usage
+- Preloading of embeddings at startup to avoid delays
 
-## Install
+### 5. Semantic Relations & Search
+- Automatic creation of relations between semantically similar memories
+- Cosine similarity calculation for finding related content
+- Contextual search functionality with caching
+- Intelligent recall system that identifies relevant memories based on conversation context
 
-**Windows (PowerShell)**
-```powershell
-git clone https://github.com/pnll1991/lobstermind-memory.git "$env:USERPROFILE\.openclaw\extensions\lobstermind-memory"
-cd "$env:USERPROFILE\.openclaw\extensions\lobstermind-memory"
-npm install
-# ✅ Auto-creates: database, backups, Obsidian vault, MEMORY.md
-openclaw gateway restart
-```
+### 6. Cross Platform Integration
+- Automatic synchronization with Obsidian (via Memories.md)
+- Native MEMORY.md file support
+- Backup functionality with timestamped JSON exports  
+- Full OpenClaw hook compatibility with support for various event types
+- Gigabrain-style note protocol support (`<memory_note>` tags)
 
-**macOS / Linux**
-```bash
-git clone https://github.com/pnll1991/lobstermind-memory.git ~/.openclaw/extensions/lobstermind-memory
-cd ~/.openclaw/extensions/lobstermind-memory
-npm install
-# ✅ Auto-creates: database, backups, Obsidian vault, MEMORY.md
-openclaw gateway restart
-```
+### 7. Command Line Interface
+- `openclaw memories list`: List all stored memories
+- `openclaw memories add "<content>"`: Save manual memories
+- `openclaw memories search "<query>`: Find semantically similar content
+- `openclaw memories stats`: Overview statistics
+- `openclaw memories autostats`: Auto-capture performance metrics (precision, recall, etc.)
+- `openclaw memories clusters`: Show generated thematic clusters
+- `openclaw memories cluster <id>`: Show specific cluster with its members
+- `openclaw memories backup`: Create backup file
 
-**That's it. Everything is automatic.**
+## Installation
 
----
+1. Clone the repository to your OpenClaw extensions directory:
+   ```bash
+   git clone https://github.com/pnll1991/lobstermind-memory.git ~/.openclaw/extensions/lobstermind-memory
+   ```
 
-## What It Does
+2. Activate the plugin:
+   ```bash
+   openclaw plugins enable lobstermind-memory
+   openclaw plugins allow add lobstermind-memory
+   # Then restart OpenClaw gateway service
+   ```
 
-```bash
-$ openclaw memories add "I prefer TypeScript"
-✓ Memory saved [PREFERENCE]
+## Architecture
 
-$ openclaw memories search "what language do I use"
-✓ Found 1 memory: I prefer TypeScript
+- **Primary File**: `index.ts` - Main plugin implementation with all features
+- **Database**: SQLite with optimized indexes for performance
+- **Storage**: Local memory storage in workspace/.openclaw/memory/ with backups
+- **Synchronization**: Both Obsidian integration and native MEMORY.md sync
 
-$ openclaw memories backup --to gdrive
-✓ Uploaded to Google Drive
-```
+## Security & Privacy
 
-- **Natural Language**: "Remember I'm from Argentina" → auto-detects type
-- **Semantic Search**: Find memories by meaning, not keywords
-- **Cloud Backup**: Google Drive, Dropbox, OneDrive
-- **Auto-Dedup**: Never creates duplicates
-- **Zero Config**: Works immediately
+The plugin includes comprehensive data protection:
+- Sensitive data filtering at all entry points
+- Automatic blocking of various private information types
+- Safe handling of user-provided content with pattern verification
 
----
+## Development
 
-## LobsterMind vs Gigabrain
+All contributions are welcome. The codebase follows OpenClaw plugin conventions with proper TypeScript typing, modular design, and extensive error handling.
 
-Both solve long-term memory for OpenClaw. Different approaches.
-
-| Feature | LobsterMind | Gigabrain |
-|---------|-------------|-----------|
-| Install Time | 1 min | 30 min |
-| Dependencies | Node.js only | Python + Ollama + Node.js |
-| Configuration | Zero | 50+ options |
-| Lines of Code | 1,400 | 2,000+ |
-| Cloud Backup | ✅ GDrive/Dropbox/OneDrive | ❌ Local only |
-| Natural Language | ✅ Full support | ⚠️ Limited |
-| Web Console | ❌ CLI only | ✅ Web UI |
-| Entity Tracking | ❌ No | ✅ Yes |
-
-### Choose LobsterMind if:
-- You want **simple installation** (1 command)
-- You prefer **zero configuration**
-- You want **cloud backup** support
-- You prefer **CLI over web UI**
-
-### Choose Gigabrain if:
-- You want **comprehensive features**
-- You need **entity/person tracking**
-- You want **web console and dashboards**
-- You don't mind **complex setup**
-
-Both are valid. Choose based on your needs.
-
----
-
-## Usage
-
-```bash
-# Add memory
-openclaw memories add "I prefer TypeScript" --tags "coding"
-
-# Search (natural language)
-openclaw memories search "what language do I use"
-openclaw memories search "what did I say yesterday"
-
-# List with filters
-openclaw memories list --tag "coding"
-openclaw memories list --from 2026-03-01
-
-# Backup
-openclaw memories backup --to gdrive
-
-# Stats
-openclaw memories stats
-openclaw memories tags
-```
-
----
-
-## Natural Language Capture
-
-Say in chat:
-
-| You Say | Auto-Detected As |
-|---------|------------------|
-| "Remember I'm from Argentina" | `[USER_FACT]` |
-| "I prefer TypeScript" | `[PREFERENCE]` |
-| "I decided to use Node.js" | `[DECISION]` |
-| "My project is about AI" | `[PROJECT]` |
-
-Auto-detects type from content. No manual tags needed.
-
----
-
-## Requirements
-
-- OpenClaw 2026.3.7+
-- Node.js 22+
-
----
+Created for community use with legitimate purposes for learning and conversation enhancement. Compatible with open-source software principles and OpenClaw licensing framework.
 
 ## License
 
-MIT
-
----
-
-_Built with SQLite and common sense._
+This plugin is released under open-source principles compatible with the OpenClaw ecosystem.
