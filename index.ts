@@ -19,10 +19,11 @@ export default {
   },
   register(api: any) {
     console.log('[lobstermind] Loading...');
-    const ws = api.runtime?.workspace || api.config?.workspace || './workspace';
-    const dbDir = join(ws, 'memory');
-    const backupDir = join(ws, 'memory', 'backups');
-    const obsidianDir = join(ws, 'obsidian-vault', 'LobsterMind');
+    const homeDir = process.env.USERPROFILE || process.env.HOME || '.';
+    const openclawDir = join(homeDir, '.openclaw');
+    const dbDir = join(openclawDir, 'memory');
+    const backupDir = join(openclawDir, 'memory', 'backups');
+    const obsidianDir = join(openclawDir, 'workspace', 'obsidian-vault', 'LobsterMind');
     [dbDir, backupDir, obsidianDir].forEach(d => { if (!existsSync(d)) mkdirSync(d, { recursive: true }); });
     const db = new Database(join(dbDir, 'lobstermind-memory.db'));
     
@@ -314,7 +315,7 @@ export default {
       
       // Native MEMORY.md sync
       try {
-        const nativePath = join(ws, 'MEMORY.md');
+        const nativePath = join(openclawDir, 'workspace', 'MEMORY.md');
         const nativeEntry = '- [' + t + '] ' + c + ' (confidence: ' + conf.toFixed(2) + ')\n';
         let content = '';
         if (existsSync(nativePath)) {
@@ -376,7 +377,7 @@ export default {
     }
     
     // Cluster management functions
-    const assignToCluster = (memoryId: string, content: string, embedding: number[]): void => {
+    const assignToCluster = async (memoryId: string, content: string, embedding: number[]): Promise<void> => {
       try {
         // Convert embedding to JSON string
         const embeddingJson = JSON.stringify(embedding);
@@ -446,26 +447,36 @@ export default {
       // Try to infer topic from the initial content
       const lowerContent = initialContent.toLowerCase();
       
-      if (lowerContent.includes('boca') || lowerContent.includes('futbol') || lowerContent.includes('soccer') || lowerContent.includes('equipo')) {
-        topic = "Interest in Boca";  
-      }
-      else if (lowerContent.includes('work') || lowerContent.includes('trabajo') || lowerContent.includes('job') || lowerContent.includes('career') || lowerContent.includes('trabajo en')) {
+      // Generic topic detection (no hardcoded personal references)
+      if (lowerContent.includes('work') || lowerContent.includes('trabajo') || lowerContent.includes('job') || lowerContent.includes('career') || lowerContent.includes('company') || lowerContent.includes('empresa') || lowerContent.includes('office')) {
         topic = "Work & Career";
       }
-      else if (lowerContent.includes('live') || lowerContent.includes('vivo') || lowerContent.includes('home') || lowerContent.includes('casa') || lowerContent.includes('city')) {
+      else if (lowerContent.includes('live') || lowerContent.includes('vivo') || lowerContent.includes('home') || lowerContent.includes('casa') || lowerContent.includes('city') || lowerContent.includes('ciudad') || lowerContent.includes('neighborhood')) {
         topic = "Location & Home";
       }
-      else if (lowerContent.includes('family') || lowerContent.includes('familia') || lowerContent.includes('parents') || lowerContent.includes('padre') || lowerContent.includes('madre')) {
+      else if (lowerContent.includes('family') || lowerContent.includes('familia') || lowerContent.includes('parents') || lowerContent.includes('padre') || lowerContent.includes('madre') || lowerContent.includes('mother') || lowerContent.includes('father') || lowerContent.includes('sibling')) {
         topic = "Family";
       }
-      else if (lowerContent.includes('like') || lowerContent.includes('gusta') || lowerContent.includes('love') || lowerContent.includes('prefer') || lowerContent.includes('dislike') || lowerContent.includes('no me gusta')) {
+      else if (lowerContent.includes('like') || lowerContent.includes('gusta') || lowerContent.includes('love') || lowerContent.includes('prefer') || lowerContent.includes('dislike') || lowerContent.includes('no me gusta') || lowerContent.includes('prefiero') || lowerContent.includes('enjoy')) {
         topic = "Preferences";
       }
-      else if (lowerContent.includes('study') || lowerContent.includes('learn') || lowerContent.includes('education') || lowerContent.includes('estudio') || lowerContent.includes('university')) {
+      else if (lowerContent.includes('study') || lowerContent.includes('learn') || lowerContent.includes('education') || lowerContent.includes('estudio') || lowerContent.includes('university') || lowerContent.includes('escuela') || lowerContent.includes('school') || lowerContent.includes('course')) {
         topic = "Education";
       }
-      else if (lowerContent.includes('habits') || lowerContent.includes('rutinas') || lowerContent.includes('daily') || lowerContent.includes('every day')) {
+      else if (lowerContent.includes('habits') || lowerContent.includes('rutinas') || lowerContent.includes('daily') || lowerContent.includes('every day') || lowerContent.includes('todos los días') || lowerContent.includes('routine')) {
         topic = "Daily Habits";
+      }
+      else if (lowerContent.includes('hobby') || lowerContent.includes('hobbies') || lowerContent.includes('interest') || lowerContent.includes('interés') || lowerContent.includes('pasatiempo') || lowerContent.includes('sports') || lowerContent.includes('music')) {
+        topic = "Hobbies & Interests";
+      }
+      else if (lowerContent.includes('health') || lowerContent.includes('salud') || lowerContent.includes('exercise') || lowerContent.includes('ejercicio') || lowerContent.includes('gym') || lowerContent.includes('diet') || lowerContent.includes('fitness')) {
+        topic = "Health & Fitness";
+      }
+      else if (lowerContent.includes('travel') || lowerContent.includes('viaje') || lowerContent.includes('trip') || lowerContent.includes('vacation') || lowerContent.includes('vacaciones') || lowerContent.includes('trip')) {
+        topic = "Travel";
+      }
+      else if (lowerContent.includes('friend') || lowerContent.includes('amigo') || lowerContent.includes('amiga') || lowerContent.includes('relationship') || lowerContent.includes('relación')) {
+        topic = "Relationships";
       }
       
       return topic;
@@ -556,7 +567,7 @@ export default {
     }
     
     // Cache for search queries
-    const searchCache = new Map<string, any[]>();
+    const searchCache = new Map<string, { data: any[], timestamp: number }>();
     const MAX_SEARCH_RESULTS_CACHE = 100;
     const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
     
@@ -673,7 +684,7 @@ export default {
       if (!hasPersonalInfo) {
         // Additional check for valuable statements that don't match obvious patterns
         const contentLower = trimmedContent.toLowerCase();
-        const valuableIdentifiers = ['Boca', 'soy de', 'de Boca', 'trabajo en', 'me llamo', 'mi nombre', 'mi hobby', 'soy fan', 'soy hincha', 'I am from', 'I work at', 'mi profesión', 'mi trabajo', 'mi posición'];
+        const valuableIdentifiers = ['soy de', 'trabajo en', 'me llamo', 'mi nombre', 'mi hobby', 'soy fan', 'soy hincha', 'I am from', 'I work at', 'mi profesión', 'mi trabajo', 'mi posición', 'I live in', 'vivo en'];
         hasPersonalInfo = valuableIdentifiers.some(identifier => contentLower.includes(identifier.toLowerCase()));
       }
       
@@ -740,7 +751,7 @@ export default {
         },
         // PERSONAL FACTS (identity in multiple languages)
         { 
-          regex: /\b(I\s+am|I'm|soy|yo\s+soy|mi\s+nombre\s+es|llamo|trabajo\s+en|works\s+at|work\s+for|job|posición|cargo|profesión|posicion|position|empleo|vivo\s+en|live\s+in|habito|resido|estudio|study|learning|learn|aprendiendo|de\s+Boca|from\s+Boca|fan\s+of|supporter|soy\s+de|cumpleaños|birthday|nací|nacio|born|cumple|mi\s+lugar\s+de\s+nacimiento|birthplace|edad|age|hobbies|activities|activity|pasatiempos|intereses)/i, 
+          regex: /\b(I\s+am|I'm|soy|yo\s+soy|mi\s+nombre\s+es|llamo|trabajo\s+en|works\s+at|work\s+for|job|posición|cargo|profesión|posicion|position|empleo|vivo\s+en|live\s+in|habito|resido|estudio|study|learning|learn|aprendiendo|fan\s+of|supporter|soy\s+de|cumpleaños|birthday|nací|nacio|born|cumple|mi\s+lugar\s+de\s+nacimiento|birthplace|edad|age|hobbies|activities|activity|pasatiempos|intereses)/i, 
           type: 'USER_FACT', 
           confidence: 0.90,
           desc: 'personal facts'
@@ -841,13 +852,14 @@ export default {
         };
       }
       
-      // Specific keywords related to user profile/identity that were mentioned in your instructions
-      if (cleanContent.length >= 15 && (cleanContent.includes('Boca') || cleanContent.includes('de Boca'))) {
-        console.log(`[classifier] SPECIFIC USER IDENTITY (Boca fan) detected: "${cleanContent}"`);
+      // Additional identity pattern fallback (generic, no hardcoded references)
+      if (cleanContent.length >= 20 && !cleanContent.includes('?') && 
+          (lowerContent.includes('team') || lowerContent.includes('equipo') || lowerContent.includes('club') || lowerContent.includes('sport') || lowerContent.includes('deporte'))) {
+        console.log(`[classifier] SPORTS/TEAM identity detected -> Type: USER_FACT, Confidence: 0.85`);
         return {
           content: cleanContent,
           type: 'USER_FACT',
-          confidence: 0.95,
+          confidence: 0.85,
           shouldSave: true
         };
       }
@@ -906,161 +918,95 @@ export default {
           }
         }
       });
-    } else if (api.registerMiddleware) {
-      // Alternative middleware registration
-      api.registerMiddleware({
-        priority: 999, // High priority to capture messages early
-        handler: (ctx: any, next: () => Promise<any>) => {
-          if (ctx?.request?.messages) {
-            const userMessages = ctx.request.messages.filter((msg: any) => msg.role === 'user');
-            userMessages.forEach((msg: any) => {
-              if (msg.content) {
-                const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-                
-                // Check for Gigabrain memory note protocol
-                if (content.includes('<memory_note>') && content.includes('</memory_note>')) {
-                  console.log('[lobstermind] Detected Gigabrain memory_note in middleware');
-                  extractMemoryFromNoteTags(content).forEach(memory => {
-                    save(memory.content, memory.type, memory.confidence);
-                  });
-                } 
-                else {
-                  // Process for automatic capture
-                  processUserInputForMemory(content);
-                }
-              }
-            });
-          }
-          return next();
-        }
-      });
-    } else {
-      // Fallback to available hooks with correct signature that OpenClaw supports
-      console.log('[lobstermind] Using fallback hook registration approach');
+    } else if (api.on) {
+      // Use OpenClaw's typed lifecycle hooks via api.on()
+      console.log('[lobstermind] Registering lifecycle hooks via api.on()');
       
-      // Known functional OpenClaw hooks
-      if (typeof api.hooks?.onMessageCreate === 'function') {
-        api.hooks.onMessageCreate((message: any) => {
-          console.log('[lobstermind] onMessageCreate hook triggered for automatic capture');
-          const content = typeof message === 'string' ? message : (message?.content || message?.message || '');
-          if (content && typeof content === 'string') {
-            console.log(`[lobstermind] Processing content from onMessageCreate: ${content.substring(0, 100)}...`);
-            processContentForMemory(content);
-          }
-        });
-        console.log('[lobstermind] Registered official hook: onMessageCreate');
-      } else if (typeof api.hooks?.afterMessage === 'function') {
-        api.hooks.afterMessage((message: any) => {
-          console.log('[lobstermind] afterMessage hook triggered for automatic capture');
-          const content = typeof message === 'string' ? message : (message?.content || message?.message || '');
-          if (content && typeof content === 'string') {
-            console.log(`[lobstermind] Processing content from afterMessage: ${content.substring(0, 100)}...`);
-            processContentForMemory(content);
-          }
-        });
-        console.log('[lobstermind] Registered official hook: afterMessage');
-      } else if (typeof api.hooks?.beforeRequest === 'function') {
-        api.hooks.beforeRequest((context: any) => {
-          console.log('[lobstermind] beforeRequest hook triggered for automatic capture');
-          const content = context?.input || context?.user_input || (context?.content || '');
-          if (content && typeof content === 'string') {
-            console.log(`[lobstermind] Processing content from beforeRequest: ${content.substring(0, 100)}...`);
-            processContentForMemory(content);
-          }
-        });
-        console.log('[lobstermind] Registered official hook: beforeRequest');
-      }
-                
-      // Helper function to handle various content sources
-      function processContentForMemory(content: string) {
-        if (content && typeof content === 'string') {
-          // Check for Gigabrain memory note protocol
-          if (content.includes('<memory_note>') && content.includes('</memory_note>')) {
-            console.log('[lobstermind] Detected Gigabrain memory_note protocol in event');
-            extractMemoryFromNoteTags(content).forEach(memory => {
-              save(memory.content, memory.type, memory.confidence);
-            });
-          } else {
-            // Process for automatic capture
-            processUserInputForMemory(content);
-          }
-        }
-      }
-        });
-        console.log('[lobstermind] Registered official hook: onMessageCreate');
-      } else if (typeof api.hooks?.afterMessage === 'function') {
-        api.hooks.afterMessage((message: any) => {
-          console.log('[lobstermind] afterMessage hook triggered for automatic capture');
-          const content = typeof message === 'string' ? message : (message?.content || message?.message || '');
-          if (content && typeof content === 'string') {
-            console.log(`[lobstermind] Processing content from afterMessage: ${content.substring(0, 100)}...`);
-            processContentForMemory(content);
-          }
-        });
-        console.log('[lobstermind] Registered official hook: afterMessage');
-      } else if (typeof api.hooks?.beforeRequest === 'function') {
-        api.hooks.beforeRequest((context: any) => {
-          console.log('[lobstermind] beforeRequest hook triggered for automatic capture');
-          const content = context?.input || context?.user_input || (context?.content || '');
-          if (content && typeof content === 'string') {
-            console.log(`[lobstermind] Processing content from beforeRequest: ${content.substring(0, 100)}...`);
-            processContentForMemory(content);
-          }
-        });
-        console.log('[lobstermind] Registered official hook: beforeRequest');
-      }
-                
-      // Helper function to handle various content sources
-      function processContentForMemory(content: string) {
-        if (content && typeof content === 'string') {
-          // Check for Gigabrain memory note protocol
-          if (content.includes('<memory_note>') && content.includes('</memory_note>')) {
-            console.log('[lobstermind] Detected Gigabrain memory_note protocol in event');
-            extractMemoryFromNoteTags(content).forEach(memory => {
-              save(memory.content, memory.type, memory.confidence);
-            });
-          } else {
-            // Process for automatic capture
-            processUserInputForMemory(content);
-          }
-        }
-      }
-                      processUserInputForMemory(content);
-                    }
-                  }
-                }
-              }
-              else {
-                // General payload processing - might contain content
-                if (typeof payload === 'string') {
-                  console.log(`[lobstermind] Processing string payload from '${eventName}': ${payload.substring(0, 100)}...`);
-                  processUserInputForMemory(payload);
-                } else if (typeof payload === 'object') {
-                  // Try to find a content property
-                  const content = payload.content || payload.text || payload.data?.content || payload.data?.text;
-                  if (content && typeof content === 'string') {
-                    console.log(`[lobstermind] Processing identified content from object payload '${eventName}': ${content.substring(0, 100)}...`);
-                    processUserInputForMemory(content);
-                  }
-                }
-              }
-            });
+      // Hook into before_prompt_build to capture user messages
+      api.on('before_prompt_build', (event: any, ctx: any) => {
+        try {
+          const messages = ctx?.messages || event?.messages || [];
+          
+          // Check BOTH user and assistant messages for memory_note tags
+          messages.forEach((msg: any) => {
+            const content = typeof msg.content === 'string' 
+              ? msg.content 
+              : JSON.stringify(msg.content);
             
-            console.log(`[lobstermind] Registered input listener for '${eventName}'`);
-          } catch (e) {
-            console.log(`[lobstermind] Event '${eventName}' not supported:`, e.message);
+            // Check for Gigabrain memory note protocol in any message
+            if (content.includes('<memory_note>') && content.includes('</memory_note>')) {
+              console.log(`[lobstermind] Detected Gigabrain memory_note in ${msg.role} message`);
+              extractMemoryFromNoteTags(content).forEach(memory => {
+                save(memory.content, memory.type, memory.confidence);
+              });
+            }
+          });
+          
+          // Process last user message for auto-capture
+          const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
+          if (lastUserMessage?.content) {
+            const content = typeof lastUserMessage.content === 'string' 
+              ? lastUserMessage.content 
+              : JSON.stringify(lastUserMessage.content);
+            
+            if (!content.includes('<memory_note>')) {
+              processUserInputForMemory(content);
+            }
           }
+        } catch (err: any) {
+          console.error('[lobstermind] Error in before_prompt_build hook:', err.message);
+        }
+        
+        // Return empty modifications - we just want to observe
+        return {};
+      }, { priority: 10 });
+      
+      console.log('[lobstermind] Registered lifecycle hook: before_prompt_build');
+    } else {
+      console.log('[lobstermind] No hook registration method available - memory capture disabled');
+    }
+    
+    // Helper function to handle various content sources
+    function processContentForMemory(content: string) {
+      if (content && typeof content === 'string') {
+        // Check for Gigabrain memory note protocol
+        if (content.includes('<memory_note>') && content.includes('</memory_note>')) {
+          console.log('[lobstermind] Detected Gigabrain memory_note protocol in event');
+          extractMemoryFromNoteTags(content).forEach(memory => {
+            save(memory.content, memory.type, memory.confidence);
+          });
+        } else {
+          // Process for automatic capture
+          processUserInputForMemory(content);
         }
       }
     }
     
     // Helper function to extract memories from Gigabrain-style <memory_note> tags
     function extractMemoryFromNoteTags(content: string): Array<{content: string, type: string, confidence: number}> {
-      const notePattern = /<memory_note(?:\s+type=["']([A-Z_]+)["']\s*|\s+)confi(?:dence)?=["'](\d*\.?\d+)["']>(.*?)<\/memory_note>/gs;
       const results: Array<{content: string, type: string, confidence: number}> = [];
       
+      // First, try to extract text from JSON format [{type:"text", text:"..."}]
+      let textContent = content;
+      try {
+        // Handle OpenClaw message format: [{type:"text", text:"..."}]
+        if (content.startsWith('[') || content.startsWith('[{')) {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+            textContent = parsed.map((item: any) => item.text || item.content || '').join(' ');
+          } else if (parsed.text) {
+            textContent = parsed.text;
+          }
+        }
+      } catch (e) {
+        // If parsing fails, use content as-is
+        console.log('[lobstermind] Content is not JSON, using as-is');
+      }
+      
+      // Now search for memory_note tags in the extracted text
+      const notePattern = /<memory_note(?:\s+type=["']([A-Z_]+)["'])?(?:\s+confidence=["'](\d*\.?\d+)["'])?\s*>(.*?)<\/memory_note>/gis;
       let match;
-      while ((match = notePattern.exec(content)) !== null) {
+      while ((match = notePattern.exec(textContent)) !== null) {
         const type = match[1] || 'USER_FACT';
         const confidenceStr = match[2] || '0.9';
         const extractedContent = match[3]?.trim() || '';
@@ -1075,6 +1021,9 @@ export default {
       }
       
       console.log(`[lobstermind] Extracted ${results.length} memories from <memory_note> tags`);
+      if (results.length > 0) {
+        console.log('[lobstermind] Extracted memories:', results);
+      }
       return results;
     }
     
@@ -1196,7 +1145,7 @@ export default {
           c.command('add <content>').action((s:string)=>{try{console.log('ID:',save(s));}catch(e:any){console.error('Error:',e.message);}});
           c.command('search <query>').action(async(q:string)=>{const r=search(q);console.log('Found:',r.length);r.forEach((m:any,i:number)=>console.log((i+1)+'. '+m.content+' ('+m.score.toFixed(2)+')'));});
           c.command('stats').action(()=>{const t=db.prepare('SELECT COUNT(*) as c FROM memories').get()as any;console.log('Total:',t.c);});
-          c.command('backup').action(()=>{const d=join(ws,'memory','backups');if(!existsSync(d))mkdirSync(d,{recursive:true});const p=join(d,'backup-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json');writeFileSync(p,JSON.stringify(db.prepare('SELECT * FROM memories').all(),null,2));console.log('Backup:',p);});
+          c.command('backup').action(()=>{const d=join(openclawDir,'memory','backups');if(!existsSync(d))mkdirSync(d,{recursive:true});const p=join(d,'backup-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json');writeFileSync(p,JSON.stringify(db.prepare('SELECT * FROM memories').all(),null,2));console.log('Backup:',p);});
           // Add command for auto-capture stats
           c.command('autostats').action(()=>{console.log('Auto-capture Statistics:'); console.log('Total processed:', autoCaptureStats.totalProcessed); console.log('Total captured:', autoCaptureStats.totalCaptured); console.log('Success rate:', autoCaptureStats.totalProcessed > 0 ? (autoCaptureStats.totalCaptured/autoCaptureStats.totalProcessed*100).toFixed(1)+'%' : 'N/A'); console.log('Last capture:', autoCaptureStats.lastCaptureTime || 'Never'); console.log('True Positives:', autoCaptureStats.truePositives); console.log('True Negatives:', autoCaptureStats.trueNegatives); console.log('False Positives:', autoCaptureStats.falsePositives); console.log('False Negatives:', autoCaptureStats.falseNegatives); const precision = (autoCaptureStats.truePositives > 0) ? (autoCaptureStats.truePositives / (autoCaptureStats.truePositives + autoCaptureStats.falsePositives)).toFixed(3) : 'N/A'; const recall = (autoCaptureStats.truePositives > 0) ? (autoCaptureStats.truePositives / (autoCaptureStats.truePositives + autoCaptureStats.falseNegatives)).toFixed(3) : 'N/A'; console.log('Precision:', precision); console.log('Recall:', recall); console.log('Context window size:', conversationContext.recentInputs.length); console.log('Context awareness active:', conversationContext.timestamps.length > 0);});
           // Add command to view clusters

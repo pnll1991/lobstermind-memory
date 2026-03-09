@@ -1,48 +1,188 @@
-# LobsterMind Memory - OpenClaw Community Memory Plugin
+# LobsterMind Memory
 
-Community memory plugin for OpenClaw with persistent contextual information extraction.
+Long-term memory plugin for OpenClaw with SQLite storage, semantic search, automatic clustering, and Obsidian sync.
 
-## Technical Infrastructure
+## Features
 
-### Database Layer
-- **Primary Storage**: SQLite database at `workspace/memory/lobstermind-memory.db`
-- **Schema**: Memories, relations, clusters, and cluster members tables
-- **Indexing**: Optimized indexes on type (idx_memories_type), creation date (idx_memories_created), tags (idx_memories_tags), and relation directions
+- **Automatic Memory Capture**: Detects and saves personal facts, preferences, decisions, and habits from conversations
+- **Semantic Search**: 384-dimensional embeddings with cosine similarity for intelligent recall
+- **Thematic Clustering**: Automatically groups related memories into topics
+- **Memory Relations**: Builds connections between similar memories (60%+ similarity)
+- **Dual Sync**: Writes to both native `MEMORY.md` and Obsidian vault
+- **Security**: Blocks sensitive data (emails, phones, passwords, credit cards, etc.)
+- **Performance**: LRU embedding cache + TTL search cache
+- **CLI Commands**: Manage memories directly from terminal
 
-### File System Sync
-- **Native Memory**: `workspace/MEMORY.md` (direct OpenClaw integration)
-- **Obsidian Sync**: `workspace/obsidian-vault/LobsterMind/Memories.md` (dedicated Obsidian vault folder) 
-- **Backup Storage**: `workspace/memory/backups/` (timestamped JSON exports)
+## Installation
 
-### Caching Layer
-- **Embedding Cache**: In-memory Map with LRU evictions (1000 item capacity)
-- **Search Cache**: TTL-based caching (5 minutes expiration) 
-- **Preloading**: At startup from database embeddings
+```bash
+# Navigate to OpenClaw plugins directory
+cd ~/.openclaw/extensions
 
-### Data Structures
-- **Memory Embeddings**: 384-dimensional SHA256-based vectors (normalized [-1,1])
-- **Cosine Similarity**: For semantic matching and clustering
-- **Thematic Clusters**: Dynamically named based on content topics
-- **Weighted Relations**: Bidirectional graph connections (0.6+ similarity threshold)
+# Clone or copy the plugin
+git clone https://github.com/pnll1991/lobstermind-memory.git
 
-## Key Features
+# Install dependencies
+cd lobstermind-memory
+npm install
 
-### Security Layer
-- Sensitive data blocking (emails, cards, passwords, IPs, etc.)
-- Content classification with pattern-based rejection
+# Build TypeScript
+npm run build
+```
 
-### Intelligence Layer
-- Thematic clustering and auto-assignment
-- Context-aware capture and relation building
-- Performance-optimized with caching and batch operations
+## Configuration
 
-### Command Interface
-- `memories list/search/stats/add/backup/autostats/clusters/cluster`
+Add to your `~/.openclaw/openclaw.json`:
 
-## Architecture
-- **Runtime**: Node.js + TypeScript
-- **State**: Workspace-based persistence
-- **Integration**: Multiple OpenClaw hooks (messages, context, interaction, prompting)
-- **Format**: Native markdown sync + structured SQLite
+```json
+{
+  "plugins": {
+    "entries": {
+      "lobstermind-memory": {
+        "path": "~/.openclaw/extensions/lobstermind-memory",
+        "config": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}
+```
 
-Created for legitimate open-source use with community learning.
+Then restart the gateway:
+
+```bash
+openclaw gateway restart
+```
+
+## Usage
+
+### Automatic Capture
+
+The plugin automatically captures memories when you share personal information:
+
+```
+User: Soy de Argentina
+→ Saved: [USER_FACT] Soy de Argentina (confidence: 0.95)
+
+User: Me gusta el café
+→ Saved: [PREFERENCE] Me gusta el café (confidence: 0.95)
+
+User: Decidí cambiar de trabajo
+→ Saved: [DECISION] Decidí cambiar de trabajo (confidence: 0.90)
+```
+
+### Manual Capture
+
+Use the CLI to add memories manually:
+
+```bash
+openclaw memories add "Tu memoria aquí"
+```
+
+### Search
+
+```bash
+openclaw memories search "trabajo"
+```
+
+### List Memories
+
+```bash
+openclaw memories list --limit 20
+```
+
+### View Clusters
+
+```bash
+openclaw memories clusters
+openclaw memories cluster <cluster-id>
+```
+
+### Statistics
+
+```bash
+openclaw memories stats
+openclaw memories autostats
+```
+
+### Backup
+
+```bash
+openclaw memories backup
+```
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `memories list [--limit n]` | List recent memories |
+| `memories add <content>` | Add a memory manually |
+| `memories search <query>` | Semantic search |
+| `memories stats` | Show total count |
+| `memories autostats` | Auto-capture statistics |
+| `memories clusters [--min-size n]` | View memory clusters |
+| `memories cluster <id>` | View cluster members |
+| `memories backup` | Export to JSON |
+
+## Memory Types
+
+- `USER_FACT`: Personal facts (origin, identity, etc.)
+- `PREFERENCE`: Likes, dislikes, preferences
+- `DECISION`: Choices and commitments
+- `HABIT`: Routines and regular activities
+- `EDUCATION`: Studies and learning
+- `WORK_HISTORY`: Job and career info
+- `TECH_SKILL`: Technical abilities
+- `RELATIONSHIP`: Family, friends, connections
+
+## Security
+
+The plugin **blocks** storage of:
+
+- Email addresses
+- Phone numbers
+- Credit card numbers
+- Passwords and credentials
+- Government IDs
+- Bank account numbers
+- IP addresses
+- Crypto wallet addresses
+
+## File Structure
+
+```
+lobstermind-memory/
+├── index.ts                 # Main plugin code
+├── package.json             # Dependencies & metadata
+├── tsconfig.json            # TypeScript config
+├── openclaw.plugin.json     # Plugin schema
+├── README.md                # This file
+├── LICENSE                  # MIT License
+└── .gitignore               # Ignore rules
+```
+
+## Data Storage
+
+- **Database**: `~/.openclaw/memory/lobstermind-memory.db`
+- **Native Sync**: `~/.openclaw/workspace/MEMORY.md`
+- **Obsidian**: `~/.openclaw/workspace/obsidian-vault/LobsterMind/Memories.md`
+- **Backups**: `~/.openclaw/memory/backups/`
+
+## Requirements
+
+- Node.js >= 22.0.0
+- OpenClaw >= 2026.3.7
+- TypeScript (for building)
+
+## License
+
+MIT - See LICENSE file
+
+## Contributing
+
+Contributions welcome! Please read the code and open issues for bugs or feature requests.
+
+---
+
+Built for the OpenClaw community 🦞🧠

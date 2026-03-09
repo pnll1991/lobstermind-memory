@@ -4,7 +4,7 @@ package-lock.json
 pnpm-lock.yaml
 yarn.lock
 
-# Runtime files
+# Runtime files - NEVER COMMIT
 *.db
 *.db-journal
 *.sqlite
@@ -19,6 +19,7 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+*.lnk
 
 # IDE
 .vscode/
@@ -32,6 +33,16 @@ dist/
 build/
 *.tsbuildinfo
 
-# OpenClaw specific
+# OpenClaw workspace - contains user data
 .openclaw/
 workspace/
+memory/
+obsidian-vault/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+coverage/
