@@ -67,7 +67,7 @@ export default {
     
     // Auto-capture memories from <memory_note> tags in conversation
     if (api.on) {
-      api.on('after_model_resolved', (event: any, ctx: any) => {
+      api.on('after_response', (event: any, ctx: any) => {
         // Only process when a new assistant response is available
         const messages = ctx?.messages || event?.messages || [];
         if (!messages.length) return;
@@ -122,3 +122,4 @@ export default {
     return {name:'lobstermind-memory',version:'1.0.0'};
   }
 };
+
