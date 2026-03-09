@@ -105,6 +105,7 @@ export default {
         }
       });
     }
+    }
     
     const search = (q: string, k = 8) => { const qe = embed(q); return (db.prepare('SELECT * FROM memories').all() as any[]).map(m => ({...m, score: ((a:number[],b:number[])=>{const d=a.reduce((s,ai,i)=>s+ai*b[i],0),na=Math.sqrt(a.reduce((s,ai)=>s+ai*ai,0)),nb=Math.sqrt(b.reduce((s,bi)=>s+bi*bi,0));return na&&nb?d/(na*nb):0;})(qe,JSON.parse(m.embedding||'[]'))})).filter(m=>m.score>=0.3).sort((a,b)=>b.score-a.score).slice(0,k); };
     
