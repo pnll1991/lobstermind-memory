@@ -20,7 +20,34 @@ export default {
     const obsidianDir = join(ws, 'obsidian-vault', 'LobsterMind');
     [dbDir, backupDir, obsidianDir].forEach(d => { if (!existsSync(d)) mkdirSync(d, { recursive: true }); });
     const db = new Database(join(dbDir, 'lobstermind-memory.db'));
-    db.exec('CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, content TEXT, type TEXT, confidence REAL, tags TEXT, embedding TEXT, created_at TEXT, updated_at TEXT)');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS memories (
+        id TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        type TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        tags TEXT,
+        embedding TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS memory_relations (
+        from_id TEXT NOT NULL,
+        to_id TEXT NOT NULL,
+        relation_type TEXT NOT NULL,
+        weight REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (from_id, to_id, relation_type),
+        FOREIGN KEY (from_id) REFERENCES memories(id),
+        FOREIGN KEY (to_id) REFERENCES memories(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
+      CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at);
+      CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories(tags);
+      CREATE INDEX IF NOT EXISTS idx_relations_from ON memory_relations(from_id);
+      CREATE INDEX IF NOT EXISTS idx_relations_to ON memory_relations(to_id);
+      CREATE INDEX IF NOT EXISTS idx_relations_type ON memory_relations(relation_type);
+    `);
     console.log('[lobstermind] Database ready');
     
     const embed = (t: string) => { const h = createHash('sha256').update(t).digest('hex'); const v: number[] = []; for (let i = 0; i < 384; i += 4) v.push((parseInt(h.slice(i%64,(i%64)+4),16)/0xFFFFFFFF)*2-1); return v; };
