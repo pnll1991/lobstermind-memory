@@ -4,7 +4,7 @@
  | |__| (_) | |_) \__ \ ||  __/ |    | |  | | | | | | (_| |
  |_____\___/|_.__/|___/\__\___|_|    |_|  |_|_|_| |_|\__,_|
                                                                                                                   
-
+---
 > Long-term memory plugin for OpenClaw. SQLite, semantic search, cloud backup.
 
 ---
