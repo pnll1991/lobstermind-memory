@@ -37,7 +37,10 @@ export default {
         const entry = '- [' + t + '] ' + c + ' (confidence: ' + conf.toFixed(2) + ')\n';
         if (!existsSync(obs)) {
           writeFileSync(obs, `# Memories\n\nAuto-created by LobsterMind Memory plugin\n\n## [[${date}]]\n\n${entry}\n`, 'utf-8');
-        else { const e = readFileSync(obs, 'utf-8'); if (!e.includes(entry.trim())) appendFileSync(obs, entry, 'utf-8'); }
+        } else { 
+          const e = readFileSync(obs, 'utf-8'); 
+          if (!e.includes(entry.trim())) appendFileSync(obs, entry, 'utf-8'); 
+        }
         console.log('[lobstermind] ✅ Synced to Obsidian');
       } catch (err: any) { console.error('[lobstermind] ❌ Obsidian sync error:', err.message); }
       
