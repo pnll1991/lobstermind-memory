@@ -56,6 +56,9 @@ export default {
       const id = createHash('sha256').update(c).digest('hex').slice(0,16);
       const now = new Date().toISOString();
       db.prepare('INSERT OR REPLACE INTO memories (id,content,type,confidence,tags,embedding,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(id,c,t,conf,tags||null,JSON.stringify(embed(c)),now,now);
+
+      // Create relations to similar existing memories
+      linkMemories(c, id).catch(console.error); // Fire and forget - don't block save operation
       
       // Obsidian sync
       try {
