@@ -35,5 +35,9 @@
     "minOpenClawVersion": "2026.3.7",
     "displayName": "LobsterMind Memory",
     "category": "memory"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.9.3"
   }
 }
