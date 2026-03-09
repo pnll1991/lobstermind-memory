@@ -15,7 +15,7 @@ export default {
   register(api: any) {
     console.log('[lobstermind] Loading...');
     const ws = api.runtime?.workspace || 'C:\Users\Paolozky\.openclaw\workspace';
-    const db = new Database(join(ws, 'memory', 'lobstermind-memory.db'));
+    const dbDir = join(ws, 'memory'); if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true }); const db = new Database(join(dbDir, 'lobstermind-memory.db'));
     db.exec('CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, content TEXT, type TEXT, confidence REAL, tags TEXT, embedding TEXT, created_at TEXT, updated_at TEXT)');
     console.log('[lobstermind] Ready');
     
