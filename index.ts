@@ -19,7 +19,7 @@ export default {
   },
   register(api: any) {
     console.log('[lobstermind] Loading...');
-    const ws = api.runtime?.workspace || 'C:\\Users\\Paolozky\\.openclaw\\workspace';
+    const ws = api.runtime?.workspace || api.config?.workspace || './workspace';
     const dbDir = join(ws, 'memory');
     const backupDir = join(ws, 'memory', 'backups');
     const obsidianDir = join(ws, 'obsidian-vault', 'LobsterMind');
@@ -938,9 +938,6 @@ export default {
       // Fallback to available hooks with correct signature that OpenClaw supports
       console.log('[lobstermind] Using fallback hook registration approach');
       
-      // Instead of trying many random event names, we'll check for known OpenClaw hooks
-      // and register appropriately - this addresses the warnings from the doctor
-      
       // Known functional OpenClaw hooks
       if (typeof api.hooks?.onMessageCreate === 'function') {
         api.hooks.onMessageCreate((message: any) => {
@@ -950,6 +947,45 @@ export default {
             console.log(`[lobstermind] Processing content from onMessageCreate: ${content.substring(0, 100)}...`);
             processContentForMemory(content);
           }
+        });
+        console.log('[lobstermind] Registered official hook: onMessageCreate');
+      } else if (typeof api.hooks?.afterMessage === 'function') {
+        api.hooks.afterMessage((message: any) => {
+          console.log('[lobstermind] afterMessage hook triggered for automatic capture');
+          const content = typeof message === 'string' ? message : (message?.content || message?.message || '');
+          if (content && typeof content === 'string') {
+            console.log(`[lobstermind] Processing content from afterMessage: ${content.substring(0, 100)}...`);
+            processContentForMemory(content);
+          }
+        });
+        console.log('[lobstermind] Registered official hook: afterMessage');
+      } else if (typeof api.hooks?.beforeRequest === 'function') {
+        api.hooks.beforeRequest((context: any) => {
+          console.log('[lobstermind] beforeRequest hook triggered for automatic capture');
+          const content = context?.input || context?.user_input || (context?.content || '');
+          if (content && typeof content === 'string') {
+            console.log(`[lobstermind] Processing content from beforeRequest: ${content.substring(0, 100)}...`);
+            processContentForMemory(content);
+          }
+        });
+        console.log('[lobstermind] Registered official hook: beforeRequest');
+      }
+                
+      // Helper function to handle various content sources
+      function processContentForMemory(content: string) {
+        if (content && typeof content === 'string') {
+          // Check for Gigabrain memory note protocol
+          if (content.includes('<memory_note>') && content.includes('</memory_note>')) {
+            console.log('[lobstermind] Detected Gigabrain memory_note protocol in event');
+            extractMemoryFromNoteTags(content).forEach(memory => {
+              save(memory.content, memory.type, memory.confidence);
+            });
+          } else {
+            // Process for automatic capture
+            processUserInputForMemory(content);
+          }
+        }
+      }
         });
         console.log('[lobstermind] Registered official hook: onMessageCreate');
       } else if (typeof api.hooks?.afterMessage === 'function') {
