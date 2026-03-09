@@ -106,6 +106,63 @@ export default {
       });
     }
     
+    // Auto-detect memories from natural language in user messages  
+    if (api.on) {
+      api.on('after_response', (event: any, ctx: any) => {
+        const messages = ctx?.messages || event?.messages || [];
+        
+        // Scan recent user messages for natural language patterns
+        const userMessages = messages.filter((m: any) => m?.role === 'user').slice(-5);
+        
+        for (const msg of userMessages) {
+          if (msg.content) {
+            const content = typeof msg.content === 'string' 
+              ? msg.content.toLowerCase()
+              : JSON.stringify(msg.content || '');
+            
+            // User facts pattern detection
+            const factMatches = [
+              // soy de/soy del/soy un/son
+              { type: 'USER_FACT', regex: /\bsoy (de|del|de la|un|una)\s+([^.,!?]+)/g },
+              // trabajo con/trabajé en
+              { type: 'USER_FACT', regex: /\b(trabaj(o|aba|é) con|trabajo en|trabaj(o|aba)\s+(con|en|durante))\s+([^.,!?]+)/gi },
+              // vivo en  
+              { type: 'USER_FACT', regex: /\b(vivo|viv(o|ía|imos) en|vive)\s+([^.,!?]+)/gi },
+              // tengo/tengo un/tengo una
+              { type: 'USER_FACT', regex: /\b(tengo|tuve|tenía|tengo un|tengo una)\s+([^.,!?]+)/gi }
+            ];
+            
+            // Preference patterns
+            const prefMatches = [
+              // prefiero/me gusta/adoro
+              { type: 'PREFERENCE', regex: /\b(prefiero|me gusta|adoro|amo|me encanta|mi favorito) ([^.,!?]+)/gi },
+              // odio/no me gusta
+              { type: 'PREFERENCE', regex: /\b(odio|detesto|no me gusta|no soporto|molesta)\s+([^.,!?]+)/gi }
+            ];
+            
+            // Decision patterns  
+            const decisionMatches = [
+              // decidí/elegí/opté
+              { type: 'DECISION', regex: /\b(decid(o|i|í)|eleg(o|i|í)|opt(e|é) por)\s+([^.,!?]+)/gi }
+            ];
+            
+            // Scan for each type of pattern
+            for (const { type, regex } of [...factMatches, ...prefMatches, ...decisionMatches]) {
+              const matches = content.matchAll(regex);
+              for (const match of matches) {
+                const extracted = (match[2] || match[1] || match[0])?.trim();
+                if (extracted && extracted.length >= 15) {
+                  const normalized = extracted.replace(/[.,!?]/g, ' ').trim();
+                  console.log(`[lobstermind] Auto-detected [${type}]: ${normalized}`);
+                  save(normalized, type, 0.75);
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+    
     const search = (q: string, k = 8) => { const qe = embed(q); return (db.prepare('SELECT * FROM memories').all() as any[]).map(m => ({...m, score: ((a:number[],b:number[])=>{const d=a.reduce((s,ai,i)=>s+ai*b[i],0),na=Math.sqrt(a.reduce((s,ai)=>s+ai*ai,0)),nb=Math.sqrt(b.reduce((s,bi)=>s+bi*bi,0));return na&&nb?d/(na*nb):0;})(qe,JSON.parse(m.embedding||'[]'))})).filter(m=>m.score>=0.3).sort((a,b)=>b.score-a.score).slice(0,k); };
     
     if (api.registerCli) {
